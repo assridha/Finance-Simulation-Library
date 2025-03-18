@@ -431,20 +431,50 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
     # Transpose the PnL matrix to flip axes (price on y-axis, date on x-axis)
     pnl_matrix_t = pnl_percent_matrix.T
     
+    # Determine the range for the colormap
+    # Make sure the color scale is balanced and centered at zero
+    max_abs_pnl = max(abs(np.min(pnl_percent_matrix)), abs(np.max(pnl_percent_matrix)))
+    vmin = -max_abs_pnl
+    vmax = max_abs_pnl
+    
+    # Create a custom colormap: red for negative, white for zero, green for positive
+    # Using a diverging colormap with white at the center
+    cmap = plt.cm.RdYlGn  # Red-Yellow-Green colormap
+    
     # Create heatmap with flipped axes
     im = ax.imshow(
         pnl_matrix_t, 
         aspect='auto', 
         origin='lower', 
-        cmap='RdYlGn',
+        cmap=cmap,
         extent=[0, len(date_range)-1, price_range[0], price_range[-1]],
-        vmin=min(-100, np.min(pnl_percent_matrix)),  # Ensure color scale is balanced for percentage values
-        vmax=max(100, np.max(pnl_percent_matrix))
+        vmin=vmin,
+        vmax=vmax
     )
     
-    # Add colorbar
-    cbar = fig.colorbar(im)
-    cbar.set_label('PnL (%)')
+    # Add colorbar with clear labels
+    cbar = fig.colorbar(im, ax=ax, extend='both')
+    cbar.set_label('PnL (%)', fontsize=10)
+    
+    # Add tick marks at important PnL percentages
+    cbar_ticks = np.array([-100, -50, 0, 50, 100])
+    # Extend to include max/min if they're outside our standard range
+    if vmin < -100:
+        cbar_ticks = np.append(np.round(vmin, -1), cbar_ticks)
+    if vmax > 100:
+        cbar_ticks = np.append(cbar_ticks, np.round(vmax, -1))
+    
+    cbar_ticks = np.unique(cbar_ticks)  # Remove any duplicates
+    cbar_ticks = cbar_ticks[(cbar_ticks >= vmin) & (cbar_ticks <= vmax)]  # Ensure ticks are within range
+    
+    cbar.set_ticks(cbar_ticks)
+    cbar.set_ticklabels([f"{tick}%" for tick in cbar_ticks])
+    
+    # Add labels to explain the color meaning
+    cbar.ax.text(0.5, 0.05, "Loss", transform=cbar.ax.transAxes, 
+                 ha='center', va='bottom', color='darkred', fontsize=8)
+    cbar.ax.text(0.5, 0.95, "Profit", transform=cbar.ax.transAxes, 
+                 ha='center', va='top', color='darkgreen', fontsize=8)
     
     # Set title and labels
     ax.set_title(f"{position_type.capitalize()} {ticker} {option_type.upper()} Option PnL Simulation\nStrike: ${strike_price:.2f}, Current Price: ${current_price:.2f}")
@@ -463,7 +493,8 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
     # Add current price line (horizontal now)
     ax.axhline(y=current_price, color='blue', linestyle='-', alpha=0.7, label=f'Current: ${current_price:.2f}')
     
-    # Add break-even line(s) - now need to find for each date column
+    # Add break-even line(s) - find for each date column
+    breakeven_prices = []
     for i in range(len(date_range)):
         # Find where PnL crosses zero for this date
         for j in range(1, len(price_range)):
@@ -472,6 +503,7 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
                 p1, p2 = price_range[j-1], price_range[j]
                 pnl1, pnl2 = pnl_percent_matrix[i, j-1], pnl_percent_matrix[i, j]
                 break_even = p1 + (p2 - p1) * (-pnl1) / (pnl2 - pnl1)
+                breakeven_prices.append((i, break_even))
                 
                 # Only plot break-even for start date and expiry date to avoid clutter
                 if i == 0:
@@ -483,7 +515,17 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
                     ax.annotate(f'${break_even:.2f}', (i, break_even), xytext=(5, 5), 
                                 textcoords='offset points', color='red')
     
-    ax.legend()
+    # Add a legend with annotations explaining what the plot shows
+    legend = ax.legend(loc='best')
+    
+    # Add additional annotation explaining the heatmap
+    description = (
+        f"Heatmap shows PnL as % of initial investment (${initial_investment:.2f}).\n"
+        f"Green areas indicate profit, red areas indicate loss."
+    )
+    ax.text(0.02, 0.02, description, transform=ax.transAxes, fontsize=9,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+    
     fig.tight_layout()
     
     # Save or display the plot
@@ -777,6 +819,176 @@ def plot_price_probability(price_probabilities, current_price, target_prices=Non
     
     return fig
 
+def simulate_geometric_brownian_motion(ticker, current_price, days_to_simulate, num_simulations=1, 
+                                       historical_volatility=None, risk_free_rate=None, seed=None):
+    """
+    Simulate stock price paths using Geometric Brownian Motion
+    
+    Args:
+        ticker (str): Ticker symbol
+        current_price (float): Current price of the stock
+        days_to_simulate (int): Number of days to simulate
+        num_simulations (int, optional): Number of simulation paths to generate. Defaults to 1.
+        historical_volatility (float, optional): Historical volatility. If None, will be calculated.
+        risk_free_rate (float, optional): Risk-free rate. If None, will be fetched.
+        seed (int, optional): Random seed for reproducibility. Defaults to None.
+    
+    Returns:
+        dict: Simulation results including price paths and dates
+    """
+    logger.info(f"Starting geometric Brownian motion simulation for {ticker}")
+    
+    # Set random seed if provided
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # Get historical volatility if not provided
+    if historical_volatility is None:
+        historical_volatility = calculate_historical_volatility(ticker)
+        logger.info(f"Using calculated historical volatility: {historical_volatility:.4f}")
+    
+    # Get risk-free rate if not provided
+    if risk_free_rate is None:
+        risk_free_rate = get_risk_free_rate()
+        logger.info(f"Using current risk-free rate: {risk_free_rate:.4f}")
+    
+    # Generate date range from today to specified days in the future
+    start_date = datetime.now().date()
+    date_range = [start_date + timedelta(days=i) for i in range(days_to_simulate + 1)]
+    
+    # Create a time grid (convert days to years for financial calculations)
+    dt = 1/252  # Approximately 252 trading days in a year
+    num_steps = days_to_simulate
+    
+    # For simulating business days only (excluding weekends)
+    is_business_day = np.array([d.weekday() < 5 for d in date_range])
+    business_days = np.where(is_business_day)[0]
+    
+    # Initialize price paths array
+    price_paths = np.zeros((num_simulations, len(date_range)))
+    price_paths[:, 0] = current_price  # Set initial price
+    
+    # Initialize arrays for the efficient simulation
+    drift = (risk_free_rate - 0.5 * historical_volatility**2) * dt
+    volatility = historical_volatility * np.sqrt(dt)
+    
+    # Simulate price paths
+    for i in range(num_simulations):
+        for step in range(1, len(date_range)):
+            # Only update on business days
+            if date_range[step].weekday() < 5:  # Monday to Friday
+                # Generate random shock from normal distribution
+                rand_shock = np.random.normal(0, 1)
+                
+                # Update price using discretized GBM equation
+                price_paths[i, step] = price_paths[i, step-1] * np.exp(drift + volatility * rand_shock)
+            else:
+                # For weekends, carry forward the previous price
+                price_paths[i, step] = price_paths[i, step-1]
+    
+    # Calculate statistics across simulations
+    mean_path = np.mean(price_paths, axis=0)
+    std_dev = np.std(price_paths, axis=0)
+    percentile_5 = np.percentile(price_paths, 5, axis=0)
+    percentile_95 = np.percentile(price_paths, 95, axis=0)
+    
+    # Return simulation results
+    return {
+        'ticker': ticker,
+        'current_price': current_price,
+        'historical_volatility': historical_volatility,
+        'risk_free_rate': risk_free_rate,
+        'date_range': date_range,
+        'price_paths': price_paths,
+        'mean_path': mean_path,
+        'std_dev': std_dev,
+        'percentile_5': percentile_5,
+        'percentile_95': percentile_95
+    }
+
+def plot_price_simulations(simulation_results, num_paths_to_plot=5, save_path=None):
+    """
+    Plot the simulated price paths
+    
+    Args:
+        simulation_results (dict): Results from simulate_geometric_brownian_motion
+        num_paths_to_plot (int, optional): Number of individual paths to plot. Defaults to 5.
+        save_path (str, optional): Path to save the plot. If None, the plot is displayed.
+    
+    Returns:
+        matplotlib.figure.Figure: The figure object
+    """
+    # Extract data from simulation results
+    ticker = simulation_results['ticker']
+    current_price = simulation_results['current_price']
+    date_range = simulation_results['date_range']
+    price_paths = simulation_results['price_paths']
+    mean_path = simulation_results['mean_path']
+    percentile_5 = simulation_results['percentile_5']
+    percentile_95 = simulation_results['percentile_95']
+    historical_volatility = simulation_results['historical_volatility']
+    
+    # Create figure
+    fig = plt.figure(num="Stock Price Simulation", figsize=(12, 8))
+    ax = fig.add_subplot(111)
+    
+    # Plot a subset of individual paths with low opacity
+    num_simulations = price_paths.shape[0]
+    indices_to_plot = np.random.choice(num_simulations, min(num_paths_to_plot, num_simulations), replace=False)
+    
+    for i in indices_to_plot:
+        ax.plot(date_range, price_paths[i, :], alpha=0.3, linewidth=0.8)
+    
+    # Plot mean path
+    ax.plot(date_range, mean_path, 'b-', linewidth=2, label='Mean Path')
+    
+    # Plot confidence interval (5th to 95th percentile)
+    ax.fill_between(date_range, percentile_5, percentile_95, color='b', alpha=0.2, label='90% Confidence Interval')
+    
+    # Plot current price point
+    ax.plot(date_range[0], current_price, 'ro', markersize=8, label=f'Current Price: ${current_price:.2f}')
+    
+    # Add horizontal line at current price
+    ax.axhline(y=current_price, color='r', linestyle='--', alpha=0.5)
+    
+    # Set title and labels
+    ax.set_title(f"{ticker} Stock Price Simulation\nGeometric Brownian Motion (Historical Vol: {historical_volatility:.2%})")
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Stock Price ($)')
+    
+    # Format x-axis to show dates nicely
+    num_dates = min(10, len(date_range))
+    date_indices = np.linspace(0, len(date_range)-1, num_dates, dtype=int)
+    ax.set_xticks([date_range[i] for i in date_indices])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    
+    # Add grid and legend
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc='best')
+    
+    # Add annotations explaining the simulation
+    textstr = '\n'.join([
+        f'Simulated using Geometric Brownian Motion',
+        f'Total paths: {price_paths.shape[0]}',
+        f'Historical volatility: {historical_volatility:.2%}',
+        f'Risk-free rate: {simulation_results["risk_free_rate"]:.2%}'
+    ])
+    props = dict(boxstyle='round', facecolor='white', alpha=0.7)
+    ax.text(0.02, 0.02, textstr, transform=ax.transAxes, fontsize=9,
+            verticalalignment='bottom', bbox=props)
+    
+    fig.tight_layout()
+    
+    # Save or display the plot
+    if save_path:
+        fig.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
+    
+    return fig
+
 def plot_probability_heatmap(simulation_results, save_path=None):
     """
     Plot a heatmap of the price probability matrix
@@ -861,28 +1073,68 @@ def plot_probability_heatmap(simulation_results, save_path=None):
     return fig
 
 if __name__ == "__main__":
-    # Example usage
-    results = simulate_option_pnl(
-        ticker="AAPL",
-        option_type="call",
-        expiry_date="2023-12-15",
-        target_delta=0.5,
-        position_type="buy",
-        num_contracts=1
-    )
+    # Calculate a date 6 months in the future for the example
+    future_date = (datetime.now() + timedelta(days=180)).strftime('%Y-%m-%d')
     
-    # Print report
-    print(generate_simulation_report(results))
-    
-    # Plot results
-    plot_pnl_heatmap(results)
-    plot_pnl_slices(results)
-    
-    # Plot price probability distribution as line graph
-    plot_price_probability(results['price_probabilities'], results['current_price'], [results['strike_price']])
-    
-    # Plot price probability distribution as heatmap
-    plot_probability_heatmap(results, save_path=None)
+    try:
+        # Example usage
+        results = simulate_option_pnl(
+            ticker="AAPL",
+            option_type="call",
+            expiry_date=future_date,  # Use a date 6 months in the future
+            target_delta=0.5,
+            position_type="buy",
+            num_contracts=1
+        )
+        
+        # Print report
+        print(generate_simulation_report(results))
+        
+        # Plot results
+        plot_pnl_heatmap(results)
+        plot_pnl_slices(results)
+        
+        # Plot price probability distribution as line graph
+        plot_price_probability(results['price_probabilities'], results['current_price'], [results['strike_price']])
+        
+        # Plot price probability distribution as heatmap
+        plot_probability_heatmap(results, save_path=None)
+        
+        # Run a GBM simulation and plot the results
+        print("\nRunning Geometric Brownian Motion simulation...")
+        gbm_results = simulate_geometric_brownian_motion(
+            ticker="AAPL",
+            current_price=results['current_price'],
+            days_to_simulate=results['days_to_expiry'],
+            num_simulations=100,  # Generate 100 different price paths
+            historical_volatility=results['historical_volatility'],
+            risk_free_rate=results['risk_free_rate']
+        )
+        
+        # Plot the simulation results
+        plot_price_simulations(gbm_results, num_paths_to_plot=10)
+        
+    except Exception as e:
+        print(f"Error in option simulation: {str(e)}")
+        print("Running standalone GBM simulation instead...")
+        
+        # Get current price of AAPL
+        ticker = "AAPL"
+        stock = yf.Ticker(ticker)
+        current_price = stock.history(period="1d")['Close'].iloc[-1]
+        print(f"Current price of {ticker}: ${current_price:.2f}")
+        
+        # Run standalone GBM simulation
+        gbm_results = simulate_geometric_brownian_motion(
+            ticker=ticker,
+            current_price=current_price,
+            days_to_simulate=180,  # 6 months
+            num_simulations=100,
+            seed=42  # For reproducibility
+        )
+        
+        # Plot the simulation results
+        plot_price_simulations(gbm_results, num_paths_to_plot=10)
     
     # Show all plots
     plt.show() 
