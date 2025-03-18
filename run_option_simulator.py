@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Option Simulator CLI
+Run Options Simulator
 
-This script provides a command-line interface for the option simulator.
+This script provides a command-line interface to the option simulator.
 """
 
 import argparse
@@ -11,39 +11,31 @@ from datetime import datetime, timedelta
 import logging
 from option_simulator import (
     simulate_option_pnl,
-    plot_pnl_heatmap,
     plot_pnl_slices,
-    plot_price_probability,
-    plot_probability_heatmap,
-    generate_simulation_report
+    generate_simulation_report,
+    plot_price_probability
 )
 
 def setup_logging(verbose=False):
-    """Configure logging based on verbosity level"""
-    log_level = logging.INFO if verbose else logging.WARNING
-    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
+    """Set up logging"""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s')
     return logging.getLogger(__name__)
 
 def parse_args():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description='Option Trade PnL Simulator')
+    """Parse command-line arguments"""
+    parser = argparse.ArgumentParser(description='Simulate option trades')
     
-    # Required arguments
-    parser.add_argument('ticker', type=str, help='Ticker symbol (e.g., AAPL, SPY)')
-    
-    # Option parameters
+    # Symbol and option parameters
+    parser.add_argument('ticker', type=str, help='Ticker symbol (e.g., AAPL)')
     parser.add_argument('--option-type', '-t', type=str, choices=['call', 'put'], default='call',
-                        help='Option type: call or put (default: call)')
-    
+                        help='Option type (default: call)')
     parser.add_argument('--position', '-p', type=str, choices=['buy', 'sell'], default='buy',
-                        help='Position type: buy or sell (default: buy)')
-    
+                        help='Position type (default: buy)')
     parser.add_argument('--expiry', '-e', type=str, 
-                        help='Target expiry date in YYYY-MM-DD format (default: 30 days from now)')
-    
+                        help='Expiry date in YYYY-MM-DD format (default: 30 days from now)')
     parser.add_argument('--delta', '-d', type=float, default=0.5,
-                        help='Target delta value (default: 0.5)')
-    
+                        help='Target delta (default: 0.5)')
     parser.add_argument('--contracts', '-c', type=int, default=1,
                         help='Number of contracts (default: 1)')
     
@@ -54,11 +46,13 @@ def parse_args():
     parser.add_argument('--save-plots', action='store_true',
                         help='Save plots instead of displaying them')
     
-    parser.add_argument('--plot-type', choices=['all', 'heatmap', 'slices', 'probability'], default='all',
+    # Update choices to remove 'heatmap'
+    parser.add_argument('--plot-type', choices=['all', 'slices', 'probability'], default='all',
                         help='Type of plot to generate (default: all)')
     
-    parser.add_argument('--probability-plot', choices=['none', 'heatmap', 'line', 'both'], default='both',
-                        help='Type of probability plot to generate (default: both)')
+    # Update choices to remove 'heatmap' and 'both'
+    parser.add_argument('--probability-plot', choices=['none', 'line'], default='line',
+                        help='Type of probability plot to generate (default: line)')
     
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable verbose logging')
@@ -112,14 +106,6 @@ def main():
             logger.info(f"Report saved to {report_file}")
         
         # Generate PnL plots
-        if args.plot_type in ['all', 'heatmap']:
-            if args.save_plots:
-                heatmap_file = os.path.join(args.output_dir, f"{args.ticker}_{args.option_type}_{args.position}_heatmap.png")
-                plot_pnl_heatmap(results, save_path=heatmap_file)
-                logger.info(f"PnL heatmap saved to {heatmap_file}")
-            else:
-                plot_pnl_heatmap(results)
-        
         if args.plot_type in ['all', 'slices']:
             if args.save_plots:
                 slices_file = os.path.join(args.output_dir, f"{args.ticker}_{args.option_type}_{args.position}_slices.png")
@@ -130,17 +116,10 @@ def main():
         
         # Generate probability plots
         if args.plot_type in ['all', 'probability'] and args.probability_plot != 'none':
-            # Generate probability heatmap
-            if args.probability_plot in ['heatmap', 'both']:
-                if args.save_plots:
-                    prob_heatmap_file = os.path.join(args.output_dir, f"{args.ticker}_probability_heatmap.png")
-                    plot_probability_heatmap(results, save_path=prob_heatmap_file)
-                    logger.info(f"Price probability heatmap saved to {prob_heatmap_file}")
-                else:
-                    plot_probability_heatmap(results)
+            # Remove probability heatmap section
             
             # Generate probability line graph
-            if args.probability_plot in ['line', 'both']:
+            if args.probability_plot == 'line':
                 if args.save_plots:
                     prob_line_file = os.path.join(args.output_dir, f"{args.ticker}_probability_line.png")
                     plot_price_probability(
@@ -157,9 +136,16 @@ def main():
                         [results['strike_price']]
                     )
         
+        # If showing plots, wait for user to close them
+        if not args.save_plots:
+            import matplotlib.pyplot as plt
+            plt.show()
+            
     except Exception as e:
-        logger.error(f"Error running simulation: {str(e)}")
-        raise
+        logger.error(f"Error: {str(e)}")
+        return 1
+    
+    return 0
 
 if __name__ == "__main__":
-    main() 
+    exit(main()) 

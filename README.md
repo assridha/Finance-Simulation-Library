@@ -1,8 +1,9 @@
-# Option Data Fetcher and Simulator
+# Option and Stock Simulator
 
-This tool provides two main functionalities:
+This tool provides three main functionalities:
 1. Fetching option data for a given ticker, option type, expiry date, and delta value
 2. Simulating the PnL of options trades using the Black-Scholes model
+3. Simulating stock price paths using Geometric Brownian Motion (GBM)
 
 ## Features
 
@@ -20,12 +21,41 @@ This tool provides two main functionalities:
 ### Option Simulator
 - Simulate the PnL of buying or selling options using the Black-Scholes model
 - Calculate a 2D matrix of PnLs for a range of stock prices and dates
-- Generate heatmaps, 3D surfaces, and PnL slices to visualize potential outcomes
+- Generate PnL slices and probability plots to visualize potential outcomes
 - Calculate option greeks (delta, gamma, theta, vega)
 - Generate detailed reports with trade information and potential outcomes
 - Support for both call and put options, and both buying and selling positions
 - Simulations always start from today's date and current market prices
 - Price range is calculated using implied volatility and 2-standard deviations (95% confidence interval)
+
+### Geometric Brownian Motion (GBM) Stock Simulator
+- **Monte Carlo Simulation**: Generates multiple price paths to estimate future price distributions
+- **Historical Volatility**: Uses recent price data to calculate volatility
+- **Statistical Analysis**: Provides detailed statistics about simulated prices
+- **Benchmark Comparison**: Compare a stock's simulated performance against an index (e.g., SPY)
+- **Interactive Visualization**: View price paths, confidence intervals, and relative performance
+
+## Mathematical Background
+
+### Black-Scholes Model
+The option simulator uses the Black-Scholes model to calculate option prices and greeks.
+
+### Geometric Brownian Motion Model
+The GBM model is described by the stochastic differential equation:
+
+$$dS = \mu S dt + \sigma S dW$$
+
+Where:
+- $S$ is the stock price
+- $\mu$ is the drift (expected return)
+- $\sigma$ is the volatility
+- $dW$ is a Wiener process (random term)
+
+For simulation, we use the discretized version:
+
+$$S_{t+\Delta t} = S_t \exp\left( \left(\mu - \frac{\sigma^2}{2}\right)\Delta t + \sigma \sqrt{\Delta t} Z \right)$$
+
+Where $Z$ is a standard normal random variable.
 
 ## Requirements
 
@@ -130,7 +160,8 @@ Command line arguments:
 - `--contracts`, `-c`: Number of contracts. Default: 1
 - `--output-dir`, `-o`: Directory to save output files. Default: option_simulation_results
 - `--save-plots`: Save plots instead of displaying them
-- `--plot-type`: Type of plot to generate (all, heatmap, surface, slices). Default: all
+- `--plot-type`: Type of plot to generate (all, slices, probability). Default: all
+- `--probability-plot`: Type of probability plot to generate (none, line). Default: line
 - `--verbose`, `-v`: Enable verbose logging
 
 Examples:
@@ -144,8 +175,8 @@ python run_option_simulator.py SPY -t put -p sell
 # Save plots instead of displaying them
 python run_option_simulator.py AAPL --save-plots
 
-# Generate only the heatmap plot
-python run_option_simulator.py AAPL --plot-type heatmap
+# Generate only the slices plot
+python run_option_simulator.py AAPL --plot-type slices
 ```
 
 #### Programmatic Usage
@@ -153,7 +184,7 @@ python run_option_simulator.py AAPL --plot-type heatmap
 You can also use the option simulator programmatically:
 
 ```python
-from option_simulator import simulate_option_pnl, plot_pnl_heatmap, generate_simulation_report
+from option_simulator import simulate_option_pnl, plot_pnl_slices, generate_simulation_report
 
 # Simulate buying an AAPL call option
 results = simulate_option_pnl(
@@ -170,17 +201,67 @@ report = generate_simulation_report(results)
 print(report)
 
 # Plot the results
-plot_pnl_heatmap(results)
+plot_pnl_slices(results)
 ```
 
-## Option Fetcher Function Parameters
+### GBM Stock Price Simulator
+
+#### Command Line Interface
+
+```bash
+python run_gbm_simulation.py AAPL
+```
+
+#### Advanced Options
+
+```bash
+python run_gbm_simulation.py AAPL --days 365 --simulations 1000 --benchmark SPY
+```
+
+Parameters:
+- `ticker`: Stock symbol to simulate (required)
+- `--days`: Number of days to simulate (default: 180)
+- `--simulations`: Number of simulation paths to generate (default: 1000)
+- `--benchmark`: Compare performance against this ticker (optional)
+- `--save`: Path to save the plot (optional)
+
+#### Example Output
+
+The simulation provides:
+
+1. **Price Target Analysis**: Percentile-based price targets (10th, 25th, 50th, 75th, 90th)
+2. **Benchmark Comparison**: Expected returns and probability of outperformance
+3. **Probability Analysis**: Likelihood of different price scenarios
+4. **Visualization**: Price paths and confidence intervals
+
+#### Programmatic Usage
+
+```python
+# Import and use the simulation function 
+from option_simulator import simulate_geometric_brownian_motion, plot_price_simulations
+
+# Run a simulation
+gbm_results = simulate_geometric_brownian_motion(
+    ticker="AAPL",
+    current_price=150.0,
+    days_to_simulate=180,
+    num_simulations=100
+)
+
+# Plot the simulation results
+plot_price_simulations(gbm_results, num_paths_to_plot=10)
+```
+
+## API Reference
+
+### Option Fetcher Function Parameters
 
 - `ticker` (str): The ticker symbol (e.g., 'AAPL', 'SPY')
 - `option_type` (str): 'call' or 'put'
 - `target_expiry_date` (str): Target expiry date in 'YYYY-MM-DD' format
 - `target_delta` (float): Target delta value (absolute value, e.g., 0.5)
 
-## Option Fetcher Return Value
+### Option Fetcher Return Value
 
 The function returns a dictionary containing:
 - `option_data`: DataFrame row with the selected option data
@@ -191,7 +272,7 @@ The function returns a dictionary containing:
 - `option_type`: The option type ('call' or 'put')
 - `underlying_price`: Current price of the underlying asset
 
-## Option Simulator Return Value
+### Option Simulator Return Value
 
 The simulator returns a dictionary containing:
 - Trade details (ticker, option type, position type, strike price, etc.)
@@ -201,6 +282,32 @@ The simulator returns a dictionary containing:
 - Option value matrix (2D array of option values)
 - Initial greeks (delta, gamma, theta, vega)
 - Maximum profit and loss potential
+
+### GBM Simulator Return Value
+
+The GBM simulator returns a dictionary containing:
+- Stock information (ticker, current price, etc.)
+- Simulation parameters (volatility, risk-free rate)
+- Date range for the simulation
+- Price paths (2D array of simulated prices)
+- Statistical analyses (mean path, standard deviation, percentiles)
+
+## Benefits and Limitations
+
+### Benefits of the GBM Model
+
+- **Realistic Price Distributions**: Models the non-negative and log-normal distribution of stock prices
+- **Consistent with Option Pricing Theory**: Same model underlying Black-Scholes
+- **Business Days Only**: Simulates price changes only on trading days
+- **Volatility Clustering**: Captures the tendency of volatility to vary over time
+
+### Limitations
+
+- The option simulator uses the Black-Scholes model, which has known limitations (e.g., assumes constant volatility, no dividends, etc.)
+- GBM model assumes constant volatility (not accounting for volatility clustering)
+- Assumes returns follow a normal distribution (may not capture fat tails)
+- Does not model jumps in price (can be significant for some stocks)
+- Past volatility may not represent future volatility
 
 ## Notes
 
@@ -212,7 +319,14 @@ The simulator returns a dictionary containing:
 - Starting with yfinance 0.2.28, the `option_chain()` method also returns underlying data, which this tool can utilize.
 - Comprehensive logging is included to help troubleshoot any issues with the API.
 - Options expiry dates are typically on the third Friday of each month, so the closest available expiry date may differ from your target date.
-- The option simulator uses the Black-Scholes model, which has known limitations (e.g., assumes constant volatility, no dividends, etc.).
 - The risk-free rate is fetched from the 3-month Treasury yield (^IRX) or defaults to 3% if unavailable.
 - All simulations start from today's date using current market prices, as historical option data is not available.
-- The price range for simulations is calculated using the implied volatility of the option and covers a 2-standard deviation move (approximately 95% confidence interval) by the expiry date. 
+- The price range for simulations is calculated using the implied volatility of the option and covers a 2-standard deviation move (approximately 95% confidence interval) by the expiry date.
+
+## Future Enhancements
+
+Potential improvements to consider:
+- Implement GARCH models for time-varying volatility
+- Add jump-diffusion processes for modeling price jumps
+- Include mean-reversion for certain assets
+- Implement correlated simulations for multiple assets 
