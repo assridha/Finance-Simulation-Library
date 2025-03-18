@@ -7,12 +7,14 @@ This script provides a command-line interface for the option simulator.
 
 import argparse
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from option_simulator import (
     simulate_option_pnl,
     plot_pnl_heatmap,
     plot_pnl_slices,
+    plot_price_probability,
+    plot_probability_heatmap,
     generate_simulation_report
 )
 
@@ -52,8 +54,11 @@ def parse_args():
     parser.add_argument('--save-plots', action='store_true',
                         help='Save plots instead of displaying them')
     
-    parser.add_argument('--plot-type', choices=['all', 'heatmap', 'slices'], default='all',
+    parser.add_argument('--plot-type', choices=['all', 'heatmap', 'slices', 'probability'], default='all',
                         help='Type of plot to generate (default: all)')
+    
+    parser.add_argument('--probability-plot', choices=['none', 'heatmap', 'line', 'both'], default='both',
+                        help='Type of probability plot to generate (default: both)')
     
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable verbose logging')
@@ -89,7 +94,7 @@ def main():
         results = simulate_option_pnl(
             ticker=args.ticker,
             option_type=args.option_type,
-            expiry_date=args.expiry if args.expiry else (datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d'),
+            expiry_date=args.expiry if args.expiry else (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
             target_delta=args.delta,
             position_type=args.position,
             num_contracts=args.contracts
@@ -106,12 +111,12 @@ def main():
                 f.write(report)
             logger.info(f"Report saved to {report_file}")
         
-        # Generate plots
+        # Generate PnL plots
         if args.plot_type in ['all', 'heatmap']:
             if args.save_plots:
                 heatmap_file = os.path.join(args.output_dir, f"{args.ticker}_{args.option_type}_{args.position}_heatmap.png")
                 plot_pnl_heatmap(results, save_path=heatmap_file)
-                logger.info(f"Heatmap saved to {heatmap_file}")
+                logger.info(f"PnL heatmap saved to {heatmap_file}")
             else:
                 plot_pnl_heatmap(results)
         
@@ -119,9 +124,38 @@ def main():
             if args.save_plots:
                 slices_file = os.path.join(args.output_dir, f"{args.ticker}_{args.option_type}_{args.position}_slices.png")
                 plot_pnl_slices(results, save_path=slices_file)
-                logger.info(f"Slices plot saved to {slices_file}")
+                logger.info(f"PnL slices plot saved to {slices_file}")
             else:
                 plot_pnl_slices(results)
+        
+        # Generate probability plots
+        if args.plot_type in ['all', 'probability'] and args.probability_plot != 'none':
+            # Generate probability heatmap
+            if args.probability_plot in ['heatmap', 'both']:
+                if args.save_plots:
+                    prob_heatmap_file = os.path.join(args.output_dir, f"{args.ticker}_probability_heatmap.png")
+                    plot_probability_heatmap(results, save_path=prob_heatmap_file)
+                    logger.info(f"Price probability heatmap saved to {prob_heatmap_file}")
+                else:
+                    plot_probability_heatmap(results)
+            
+            # Generate probability line graph
+            if args.probability_plot in ['line', 'both']:
+                if args.save_plots:
+                    prob_line_file = os.path.join(args.output_dir, f"{args.ticker}_probability_line.png")
+                    plot_price_probability(
+                        results['price_probabilities'], 
+                        results['current_price'],
+                        [results['strike_price']], 
+                        save_path=prob_line_file
+                    )
+                    logger.info(f"Price probability line plot saved to {prob_line_file}")
+                else:
+                    plot_price_probability(
+                        results['price_probabilities'], 
+                        results['current_price'],
+                        [results['strike_price']]
+                    )
         
     except Exception as e:
         logger.error(f"Error running simulation: {str(e)}")

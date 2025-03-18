@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import yfinance as yf
 from option_fetcher import fetch_option_data
 import logging
+import math
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -114,6 +115,134 @@ def get_risk_free_rate():
         logger.warning(f"Could not fetch current risk-free rate: {str(e)}")
         logger.warning("Using default risk-free rate of 3%")
         return 0.03  # Default to 3% if unable to fetch
+
+def calculate_historical_volatility(ticker, lookback_days=30):
+    """
+    Calculate historical volatility from the last month of price data
+    
+    Args:
+        ticker (str): Ticker symbol
+        lookback_days (int, optional): Number of days to look back. Defaults to 30.
+    
+    Returns:
+        float: Annualized historical volatility
+    """
+    try:
+        # Add some buffer days to account for weekends and holidays
+        buffer_days = int(lookback_days * 1.5)
+        
+        # Fetch historical data
+        stock = yf.Ticker(ticker)
+        hist_data = stock.history(period=f"{buffer_days}d")
+        
+        # Ensure we have enough data
+        if len(hist_data) < lookback_days:
+            logger.warning(f"Insufficient historical data for {ticker}. Using available data ({len(hist_data)} days).")
+        
+        # Calculate daily returns
+        hist_data['Return'] = hist_data['Close'].pct_change()
+        
+        # Drop NaN values
+        hist_data = hist_data.dropna()
+        
+        # Use the most recent data up to lookback_days
+        if len(hist_data) > lookback_days:
+            hist_data = hist_data.tail(lookback_days)
+        
+        # Calculate daily standard deviation
+        daily_std = hist_data['Return'].std()
+        
+        # Annualize (approximately 252 trading days in a year)
+        annual_volatility = daily_std * math.sqrt(252)
+        
+        logger.info(f"Calculated historical volatility for {ticker}: {annual_volatility:.2%}")
+        return annual_volatility
+    except Exception as e:
+        logger.error(f"Error calculating historical volatility: {str(e)}")
+        logger.warning("Using default historical volatility of 30%")
+        return 0.30  # Default to 30% if unable to fetch or calculate
+
+def calculate_price_probabilities(ticker, current_price, future_dates, price_range, historical_volatility=None):
+    """
+    Calculate the probability distribution of stock prices at future dates using log-normal distribution
+    
+    Args:
+        ticker (str): Ticker symbol
+        current_price (float): Current price of the stock
+        future_dates (list): List of future dates to calculate probabilities for
+        price_range (np.array): Array of price points to calculate probabilities for
+        historical_volatility (float, optional): Historical volatility. If None, will be calculated.
+    
+    Returns:
+        dict: Dictionary with price probabilities and probability matrix
+    """
+    # Get historical volatility if not provided
+    if historical_volatility is None:
+        historical_volatility = calculate_historical_volatility(ticker)
+    
+    # Get current risk-free rate
+    risk_free_rate = get_risk_free_rate()
+    
+    # Get current date
+    current_date = datetime.now().date()
+    
+    # Initialize probability matrix with same dimensions as PnL matrix
+    probability_matrix = np.zeros((len(future_dates), len(price_range)))
+    
+    # Calculate probabilities for each future date
+    result = {
+        'dates': future_dates,
+        'volatility': historical_volatility,
+        'risk_free_rate': risk_free_rate,
+        'price_range': price_range,
+        'probability_matrix': probability_matrix,
+        'price_distributions': []
+    }
+    
+    for i, future_date in enumerate(future_dates):
+        # Calculate time to future date in years
+        days_to_date = (future_date - current_date).days
+        if days_to_date < 0:
+            continue  # Skip dates in the past
+            
+        time_to_date_years = days_to_date / 365.0
+        
+        # Calculate probability density for each price point using log-normal distribution
+        probabilities = []
+        
+        # Log-normal distribution parameters
+        # μ = ln(S0) + (r - σ²/2)T
+        # σ = σ√T
+        mu = math.log(current_price) + (risk_free_rate - 0.5 * historical_volatility**2) * time_to_date_years
+        sigma = historical_volatility * math.sqrt(time_to_date_years)
+        
+        for j, price in enumerate(price_range):
+            # Probability density at this price point
+            if sigma > 0:
+                prob_density = (1 / (price * sigma * math.sqrt(2 * math.pi))) * \
+                              math.exp(-((math.log(price) - mu)**2) / (2 * sigma**2))
+            else:
+                prob_density = 0
+                
+            probabilities.append(prob_density)
+            probability_matrix[i, j] = prob_density
+        
+        # Normalize probabilities for this date to sum to 1
+        if sum(probabilities) > 0:
+            normalized_probabilities = [p / sum(probabilities) for p in probabilities]
+            # Also normalize the matrix row
+            probability_matrix[i, :] = probability_matrix[i, :] / sum(probability_matrix[i, :])
+        else:
+            normalized_probabilities = [0] * len(probabilities)
+        
+        result['price_distributions'].append({
+            'date': future_date,
+            'time_to_date_years': time_to_date_years,
+            'probabilities': normalized_probabilities
+        })
+    
+    result['probability_matrix'] = probability_matrix
+    return result
 
 def simulate_option_pnl(
     ticker, 
@@ -232,6 +361,16 @@ def simulate_option_pnl(
         option_type=option_type
     )
     
+    # Calculate price probability distributions using historical volatility (not implied volatility)
+    historical_volatility = calculate_historical_volatility(ticker)
+    price_probabilities = calculate_price_probabilities(
+        ticker=ticker,
+        current_price=current_price,
+        future_dates=date_range,
+        price_range=price_range,
+        historical_volatility=historical_volatility
+    )
+    
     # Return results
     return {
         'ticker': ticker,
@@ -241,6 +380,7 @@ def simulate_option_pnl(
         'current_price': current_price,
         'option_price': option_price,
         'implied_volatility': implied_volatility,
+        'historical_volatility': historical_volatility,
         'start_date': start_date,
         'expiry_date': actual_expiry_date,
         'days_to_expiry': days_to_expiry,
@@ -253,7 +393,8 @@ def simulate_option_pnl(
         'pnl_matrix': pnl_matrix,
         'option_value_matrix': option_value_matrix,
         'initial_greeks': initial_greeks,
-        'risk_free_rate': risk_free_rate
+        'risk_free_rate': risk_free_rate,
+        'price_probabilities': price_probabilities
     }
 
 def plot_pnl_heatmap(simulation_results, save_path=None):
@@ -491,6 +632,234 @@ def generate_simulation_report(simulation_results):
     
     return "\n".join(report)
 
+def plot_price_probability(price_probabilities, current_price, target_prices=None, save_path=None):
+    """
+    Plot the probability distribution of stock prices at future dates
+    
+    Args:
+        price_probabilities (dict): Results from calculate_price_probabilities
+        current_price (float): Current price of the stock
+        target_prices (list, optional): List of target prices to highlight on the plot
+        save_path (str, optional): Path to save the plot. If None, the plot is displayed.
+    
+    Returns:
+        matplotlib.figure.Figure: The figure object
+    """
+    # Extract data from price probabilities
+    future_dates = price_probabilities['dates']
+    volatility = price_probabilities['volatility']
+    price_distributions = price_probabilities['price_distributions']
+    price_range = price_probabilities['price_range']  # Get the global price range from price_probabilities
+    
+    # Handle large number of dates - select a subset if there are too many
+    max_dates_to_show = 6  # Maximum number of dates to include in the plot
+    if len(price_distributions) > max_dates_to_show:
+        # Ensure we always include first and last date (start and expiry)
+        selected_indices = [0]  # Start with first date
+        
+        # Add intermediate dates evenly spaced
+        if len(price_distributions) > 2:  # Only add intermediate if we have more than 2 dates total
+            step = (len(price_distributions) - 1) / (max_dates_to_show - 1)
+            selected_indices.extend([int(i * step) for i in range(1, max_dates_to_show - 1)])
+        
+        # Add the last date (expiry date)
+        selected_indices.append(len(price_distributions) - 1)
+        
+        # Remove any duplicates and sort
+        selected_indices = sorted(list(set(selected_indices)))
+        
+        # Select only these distributions
+        selected_distributions = [price_distributions[i] for i in selected_indices]
+    else:
+        # Use all distributions if we have few enough
+        selected_distributions = price_distributions
+    
+    # Set colors for different dates using a wider color palette to help differentiate
+    colors = plt.cm.viridis(np.linspace(0, 1, len(selected_distributions)))
+    
+    # Create figure with a bit more room on the right for the legend
+    fig = plt.figure(num="Price Probability Distribution", figsize=(14, 8))
+    ax = fig.add_subplot(111)
+    
+    # Track max probability for y-axis scaling
+    max_probability = 0
+    
+    # Plot probability distributions for selected dates
+    line_handles = []  # Store line handles for legend
+    for i, dist in enumerate(selected_distributions):
+        date = dist['date']
+        days_from_now = (date - datetime.now().date()).days
+        probabilities = dist['probabilities']
+        
+        # Update max probability
+        if probabilities and max(probabilities) > max_probability:
+            max_probability = max(probabilities)
+        
+        # Plot this date's distribution
+        line, = ax.plot(
+            price_range,
+            probabilities, 
+            color=colors[i], 
+            label=f"{date.strftime('%Y-%m-%d')} ({days_from_now} days)"
+        )
+        line_handles.append(line)
+    
+    # Calculate reasonable x-axis limits to focus on the relevant price range
+    # Typically within ±3 standard deviations of current price
+    time_to_expiry = (datetime.strptime(price_probabilities['dates'][-1].strftime('%Y-%m-%d'), '%Y-%m-%d').date() - 
+                      datetime.now().date()).days / 365.0
+    std_dev = current_price * volatility * np.sqrt(time_to_expiry)
+    
+    # Set x-axis limits to focus on the relevant price range (±3 std dev, but don't go below 0)
+    x_min = max(current_price - 3 * std_dev, price_range[0])
+    x_max = min(current_price + 3 * std_dev, price_range[-1])
+    
+    # Add some padding to y-axis (20% above max probability)
+    y_max = max_probability * 1.2
+    
+    # Set axis limits
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(0, y_max)
+    
+    # Add vertical line for current price
+    current_price_line = ax.axvline(x=current_price, color='black', linestyle='-', alpha=0.7, 
+                                   label=f'Current Price: ${current_price:.2f}')
+    
+    # Add all special lines to the legend handles list
+    legend_handles = line_handles.copy()
+    legend_handles.append(current_price_line)
+    
+    # Add vertical lines for target prices if provided
+    target_price_lines = []
+    if target_prices:
+        for i, price in enumerate(target_prices):
+            line = ax.axvline(x=price, color='red', linestyle='--', alpha=0.5, 
+                              label=f'Target: ${price:.2f}')
+            target_price_lines.append(line)
+            legend_handles.append(line)
+    
+    # Set title and labels
+    ax.set_title(f"Stock Price Probability Distribution (Historical Vol: {volatility:.2%})")
+    ax.set_xlabel('Stock Price ($)')
+    ax.set_ylabel('Probability Density')
+    
+    # Add grid
+    ax.grid(True, alpha=0.3)
+    
+    # Create a more compact legend and place it to the right of the plot
+    # This prevents the legend from taking up space in the plot area
+    lgd = ax.legend(handles=legend_handles, 
+                   loc='center left', 
+                   bbox_to_anchor=(1.02, 0.5),
+                   framealpha=0.9,
+                   fontsize=9,  # Smaller font size
+                   ncol=1)  # Single column for better readability
+    
+    # Add text annotation showing probability interpretation
+    expiry_date = price_probabilities['dates'][-1]
+    ax.text(0.02, 0.96, f"Distribution shows probability of stock price at different dates\n"
+                        f"Based on historical volatility of {volatility:.1%}\n"
+                        f"Expiration: {expiry_date.strftime('%Y-%m-%d')}", 
+            transform=ax.transAxes, fontsize=9, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+    
+    # Adjust layout to make room for the legend
+    fig.tight_layout()
+    plt.subplots_adjust(right=0.85)  # Adjust the right margin to accommodate the legend
+    
+    # Save or display the plot
+    if save_path:
+        # Save the figure with the legend included (bbox_extra_artists ensures it's not cut off)
+        fig.savefig(save_path, bbox_extra_artists=(lgd,), bbox_inches='tight')
+        plt.close(fig)
+    else:
+        plt.show()
+    
+    return fig
+
+def plot_probability_heatmap(simulation_results, save_path=None):
+    """
+    Plot a heatmap of the price probability matrix
+    
+    Args:
+        simulation_results (dict): Results from simulate_option_pnl
+        save_path (str, optional): Path to save the plot. If None, the plot is displayed.
+    """
+    # Extract data from simulation results
+    ticker = simulation_results['ticker']
+    date_range = simulation_results['date_range']
+    price_range = simulation_results['price_range']
+    current_price = simulation_results['current_price']
+    strike_price = simulation_results['strike_price']
+    probability_matrix = simulation_results['price_probabilities']['probability_matrix']
+    historical_volatility = simulation_results['historical_volatility']
+    
+    # Create figure and axes with a specific figure number
+    fig = plt.figure(num="Price Probability Heatmap", figsize=(12, 8))
+    ax = fig.add_subplot(111)
+    
+    # Transpose the probability matrix to flip axes (price on y-axis, date on x-axis)
+    probability_matrix_t = probability_matrix.T
+    
+    # Create heatmap with flipped axes
+    im = ax.imshow(
+        probability_matrix_t, 
+        aspect='auto', 
+        origin='lower', 
+        cmap='viridis',  # Using a different colormap to distinguish from PnL
+        extent=[0, len(date_range)-1, price_range[0], price_range[-1]],
+    )
+    
+    # Add colorbar
+    cbar = fig.colorbar(im)
+    cbar.set_label('Probability Density')
+    
+    # Set title and labels
+    ax.set_title(f"{ticker} Stock Price Probability Heatmap\nCurrent Price: ${current_price:.2f}, Historical Vol: {historical_volatility:.2%}")
+    ax.set_ylabel('Stock Price ($)')
+    ax.set_xlabel('Date')
+    
+    # Set x-ticks to show dates
+    num_dates = min(10, len(date_range))  # Limit to 10 dates to avoid overcrowding
+    date_indices = np.linspace(0, len(date_range)-1, num_dates, dtype=int)
+    ax.set_xticks(date_indices)
+    ax.set_xticklabels([date_range[i].strftime('%Y-%m-%d') for i in date_indices], rotation=45, ha='right')
+    
+    # Add strike price line (horizontal now)
+    ax.axhline(y=strike_price, color='black', linestyle='--', alpha=0.7, label=f'Strike: ${strike_price:.2f}')
+    
+    # Add current price line (horizontal now)
+    ax.axhline(y=current_price, color='blue', linestyle='-', alpha=0.7, label=f'Current: ${current_price:.2f}')
+    
+    # Add 1-standard deviation bands
+    for i, date in enumerate(date_range):
+        days_to_date = (date - datetime.now().date()).days
+        if days_to_date <= 0:
+            continue
+            
+        time_to_date_years = days_to_date / 365.0
+        price_std = current_price * historical_volatility * math.sqrt(time_to_date_years)
+        
+        # Add +1 and -1 standard deviation lines
+        upper_1sd = current_price + price_std
+        lower_1sd = current_price - price_std
+        
+        if i == 0 or i == len(date_range) - 1:
+            ax.plot(i, upper_1sd, 'ro', markersize=3)
+            ax.plot(i, lower_1sd, 'ro', markersize=3)
+    
+    ax.legend()
+    fig.tight_layout()
+    
+    # Save or display the plot
+    if save_path:
+        fig.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
+        
+    return fig
+
 if __name__ == "__main__":
     # Example usage
     results = simulate_option_pnl(
@@ -508,6 +877,12 @@ if __name__ == "__main__":
     # Plot results
     plot_pnl_heatmap(results)
     plot_pnl_slices(results)
+    
+    # Plot price probability distribution as line graph
+    plot_price_probability(results['price_probabilities'], results['current_price'], [results['strike_price']])
+    
+    # Plot price probability distribution as heatmap
+    plot_probability_heatmap(results, save_path=None)
     
     # Show all plots
     plt.show() 
