@@ -273,13 +273,22 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
     date_range = simulation_results['date_range']
     price_range = simulation_results['price_range']
     pnl_matrix = simulation_results['pnl_matrix']
+    option_price = simulation_results['option_price']
+    num_contracts = simulation_results['num_contracts']
+    
+    # Calculate initial investment
+    contract_multiplier = 100  # Each contract represents 100 shares
+    initial_investment = option_price * contract_multiplier * num_contracts
+    
+    # Convert PnL matrix to percentage of initial investment
+    pnl_percent_matrix = (pnl_matrix / initial_investment) * 100
     
     # Create figure and axes with a specific figure number
     fig = plt.figure(num="PnL Heatmap", figsize=(12, 8))
     ax = fig.add_subplot(111)
     
     # Transpose the PnL matrix to flip axes (price on y-axis, date on x-axis)
-    pnl_matrix_t = pnl_matrix.T
+    pnl_matrix_t = pnl_percent_matrix.T
     
     # Create heatmap with flipped axes
     im = ax.imshow(
@@ -288,13 +297,13 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
         origin='lower', 
         cmap='RdYlGn',
         extent=[0, len(date_range)-1, price_range[0], price_range[-1]],
-        vmin=min(-1000, np.min(pnl_matrix)),  # Ensure color scale is balanced
-        vmax=max(1000, np.max(pnl_matrix))
+        vmin=min(-100, np.min(pnl_percent_matrix)),  # Ensure color scale is balanced for percentage values
+        vmax=max(100, np.max(pnl_percent_matrix))
     )
     
     # Add colorbar
     cbar = fig.colorbar(im)
-    cbar.set_label('PnL ($)')
+    cbar.set_label('PnL (%)')
     
     # Set title and labels
     ax.set_title(f"{position_type.capitalize()} {ticker} {option_type.upper()} Option PnL Simulation\nStrike: ${strike_price:.2f}, Current Price: ${current_price:.2f}")
@@ -317,10 +326,10 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
     for i in range(len(date_range)):
         # Find where PnL crosses zero for this date
         for j in range(1, len(price_range)):
-            if (pnl_matrix[i, j-1] < 0 and pnl_matrix[i, j] >= 0) or (pnl_matrix[i, j-1] >= 0 and pnl_matrix[i, j] < 0):
+            if (pnl_percent_matrix[i, j-1] < 0 and pnl_percent_matrix[i, j] >= 0) or (pnl_percent_matrix[i, j-1] >= 0 and pnl_percent_matrix[i, j] < 0):
                 # Interpolate to find the exact break-even price
                 p1, p2 = price_range[j-1], price_range[j]
-                pnl1, pnl2 = pnl_matrix[i, j-1], pnl_matrix[i, j]
+                pnl1, pnl2 = pnl_percent_matrix[i, j-1], pnl_percent_matrix[i, j]
                 break_even = p1 + (p2 - p1) * (-pnl1) / (pnl2 - pnl1)
                 
                 # Only plot break-even for start date and expiry date to avoid clutter
@@ -342,94 +351,8 @@ def plot_pnl_heatmap(simulation_results, save_path=None):
         plt.close(fig)
     else:
         plt.show()
-
-def plot_pnl_surface(simulation_results, save_path=None):
-    """
-    Plot a 3D surface of the PnL matrix
-    
-    Args:
-        simulation_results (dict): Results from simulate_option_pnl
-        save_path (str, optional): Path to save the plot. If None, the plot is displayed.
-    """
-    # Extract data from simulation results
-    ticker = simulation_results['ticker']
-    option_type = simulation_results['option_type']
-    position_type = simulation_results['position_type']
-    strike_price = simulation_results['strike_price']
-    current_price = simulation_results['current_price']
-    date_range = simulation_results['date_range']
-    price_range = simulation_results['price_range']
-    pnl_matrix = simulation_results['pnl_matrix']
-    
-    # Create meshgrid for 3D plot
-    X, Y = np.meshgrid(price_range, np.arange(len(date_range)))
-    
-    # Create figure and axes with a specific figure number
-    fig = plt.figure(num="PnL Surface", figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    
-    # Create surface plot
-    surf = ax.plot_surface(
-        X, Y, pnl_matrix, 
-        cmap='RdYlGn',
-        linewidth=0, 
-        antialiased=True,
-        alpha=0.8
-    )
-    
-    # Add colorbar
-    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
-    
-    # Set title and labels
-    ax.set_title(f"{position_type.capitalize()} {ticker} {option_type.upper()} Option PnL Surface\nStrike: ${strike_price:.2f}, Current Price: ${current_price:.2f}")
-    ax.set_xlabel('Stock Price ($)')
-    ax.set_ylabel('Days from Start')
-    ax.set_zlabel('PnL ($)')
-    
-    # Set y-ticks to show dates
-    num_dates = min(5, len(date_range))  # Limit to 5 dates to avoid overcrowding
-    date_indices = np.linspace(0, len(date_range)-1, num_dates, dtype=int)
-    ax.set_yticks(date_indices)
-    ax.set_yticklabels([date_range[i].strftime('%Y-%m-%d') for i in date_indices])
-    
-    # Add zero plane for reference
-    ax.plot_surface(
-        X, Y, np.zeros_like(pnl_matrix),
-        color='gray',
-        alpha=0.2,
-        linewidth=0
-    )
-    
-    # Add strike price plane
-    strike_idx = np.abs(price_range - strike_price).argmin()
-    ax.plot(
-        [strike_price, strike_price], 
-        [0, len(date_range)-1], 
-        [np.min(pnl_matrix), np.max(pnl_matrix)], 
-        'k--', 
-        alpha=0.7, 
-        label=f'Strike: ${strike_price:.2f}'
-    )
-    
-    # Add current price plane
-    current_idx = np.abs(price_range - current_price).argmin()
-    ax.plot(
-        [current_price, current_price], 
-        [0, len(date_range)-1], 
-        [np.min(pnl_matrix), np.max(pnl_matrix)], 
-        'b-', 
-        alpha=0.7, 
-        label=f'Current: ${current_price:.2f}'
-    )
-    
-    ax.legend()
-    
-    # Save or display the plot
-    if save_path:
-        plt.savefig(save_path)
-        plt.close()
-    else:
-        plt.show()
+        
+    return fig
 
 def plot_pnl_slices(simulation_results, save_path=None):
     """
@@ -584,7 +507,6 @@ if __name__ == "__main__":
     
     # Plot results
     plot_pnl_heatmap(results)
-    plot_pnl_surface(results)
     plot_pnl_slices(results)
     
     # Show all plots

@@ -12,7 +12,6 @@ import logging
 from option_simulator import (
     simulate_option_pnl,
     plot_pnl_heatmap,
-    plot_pnl_surface,
     plot_pnl_slices,
     generate_simulation_report
 )
@@ -53,7 +52,7 @@ def parse_args():
     parser.add_argument('--save-plots', action='store_true',
                         help='Save plots instead of displaying them')
     
-    parser.add_argument('--plot-type', choices=['all', 'heatmap', 'surface', 'slices'], default='all',
+    parser.add_argument('--plot-type', choices=['all', 'heatmap', 'slices'], default='all',
                         help='Type of plot to generate (default: all)')
     
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -115,14 +114,6 @@ def main():
                 logger.info(f"Heatmap saved to {heatmap_file}")
             else:
                 plot_pnl_heatmap(results)
-        
-        if args.plot_type in ['all', 'surface']:
-            if args.save_plots:
-                surface_file = os.path.join(args.output_dir, f"{args.ticker}_{args.option_type}_{args.position}_surface.png")
-                plot_pnl_surface(results, save_path=surface_file)
-                logger.info(f"Surface plot saved to {surface_file}")
-            else:
-                plot_pnl_surface(results)
         
         if args.plot_type in ['all', 'slices']:
             if args.save_plots:
