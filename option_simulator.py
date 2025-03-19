@@ -162,6 +162,165 @@ def calculate_historical_volatility(ticker, lookback_days=30):
         logger.warning("Using default historical volatility of 30%")
         return 0.30  # Default to 30% if unable to fetch or calculate
 
+class OptionStrategy:
+    """
+    Class for creating and evaluating option trading strategies.
+    Currently supports single-leg strategies (buy/sell call/put).
+    """
+    
+    def __init__(self, 
+                 ticker, 
+                 option_type, 
+                 strike_price, 
+                 expiry_date, 
+                 current_price,
+                 option_price,
+                 implied_volatility,
+                 position_type='buy',
+                 num_contracts=1,
+                 risk_free_rate=None):
+        """
+        Initialize option strategy
+        
+        Args:
+            ticker (str): Ticker symbol
+            option_type (str): 'call' or 'put'
+            strike_price (float): Option strike price
+            expiry_date (str): Expiry date in 'YYYY-MM-DD' format
+            current_price (float): Current price of the underlying asset
+            option_price (float): Current price of the option
+            implied_volatility (float): Implied volatility of the option
+            position_type (str, optional): 'buy' or 'sell'. Defaults to 'buy'.
+            num_contracts (int, optional): Number of contracts. Defaults to 1.
+            risk_free_rate (float, optional): Risk-free rate. If None, will be fetched.
+        """
+        # Validate inputs
+        if option_type.lower() not in ['call', 'put']:
+            raise ValueError("option_type must be either 'call' or 'put'")
+        if position_type.lower() not in ['buy', 'sell']:
+            raise ValueError("position_type must be either 'buy' or 'sell'")
+        
+        self.ticker = ticker
+        self.option_type = option_type.lower()
+        self.strike_price = strike_price
+        self.expiry_date = expiry_date
+        self.current_price = current_price
+        self.option_price = option_price
+        self.implied_volatility = implied_volatility
+        self.position_type = position_type.lower()
+        self.num_contracts = num_contracts
+        
+        # Parse expiry date
+        self.expiry_date_dt = datetime.strptime(expiry_date, '%Y-%m-%d').date()
+        
+        # Set start date to today and calculate days to expiry
+        self.start_date = datetime.now().date()
+        self.days_to_expiry = (self.expiry_date_dt - self.start_date).days
+        
+        # Get risk-free rate if not provided
+        self.risk_free_rate = risk_free_rate if risk_free_rate is not None else get_risk_free_rate()
+        
+        # Calculate contract value
+        self.contract_value = option_price * 100 * num_contracts
+        
+        # Calculate initial greeks
+        self.initial_greeks = calculate_option_greeks(
+            S=current_price,
+            K=strike_price,
+            T=self.days_to_expiry / 365.0,
+            r=self.risk_free_rate,
+            sigma=implied_volatility,
+            option_type=option_type
+        )
+    
+    def calculate_option_value(self, stock_price, time_to_expiry):
+        """
+        Calculate option value using Black-Scholes model
+        
+        Args:
+            stock_price (float or np.ndarray): Stock price(s)
+            time_to_expiry (float): Time to expiry in years
+            
+        Returns:
+            float or np.ndarray: Option value(s)
+        """
+        return black_scholes_price(
+            S=stock_price,
+            K=self.strike_price,
+            T=time_to_expiry,
+            r=self.risk_free_rate,
+            sigma=self.implied_volatility,
+            option_type=self.option_type
+        )
+    
+    def calculate_pnl(self, stock_prices, times_to_expiry=None):
+        """
+        Calculate PnL matrix for given stock prices and times to expiry
+        
+        Args:
+            stock_prices (np.ndarray): 1D or 2D array of stock prices
+                If 1D, represents different prices at a single point in time
+                If 2D, the shape should be (num_dates, num_prices)
+            times_to_expiry (np.ndarray, optional): 1D array of times to expiry in years.
+                If None and stock_prices is 2D, assumes the first axis represents
+                different times with the last point being expiry (times_to_expiry=0).
+                If None and stock_prices is 1D, uses the current time to expiry.
+        
+        Returns:
+            np.ndarray: PnL matrix with same shape as stock_prices
+        """
+        # Determine input dimensions
+        is_1d = len(stock_prices.shape) == 1
+        
+        if is_1d:
+            # Handle 1D input (e.g., checking different prices at a single time)
+            if times_to_expiry is None:
+                # Use current time to expiry for all prices
+                time_to_expiry = self.days_to_expiry / 365.0
+                option_values = self.calculate_option_value(stock_prices, time_to_expiry)
+            else:
+                # If time is provided with 1D prices, broadcast the calculation
+                option_values = np.zeros((len(times_to_expiry), len(stock_prices)))
+                for i, t in enumerate(times_to_expiry):
+                    option_values[i, :] = self.calculate_option_value(stock_prices, t)
+                return self._calculate_pnl_from_values(option_values)
+        else:
+            # Handle 2D input
+            num_dates, num_prices = stock_prices.shape
+            
+            if times_to_expiry is None:
+                # Generate times to expiry linearly from current time to expiry
+                times_to_expiry = np.linspace(
+                    self.days_to_expiry / 365.0, 
+                    0,  # Expiry
+                    num_dates
+                )
+            
+            # Calculate option values for each combination of date and price
+            option_values = np.zeros_like(stock_prices)
+            for i, time_to_expiry in enumerate(times_to_expiry):
+                option_values[i, :] = self.calculate_option_value(stock_prices[i, :], time_to_expiry)
+        
+        # Calculate PnL from option values
+        return self._calculate_pnl_from_values(option_values)
+    
+    def _calculate_pnl_from_values(self, option_values):
+        """
+        Calculate PnL from option values
+        
+        Args:
+            option_values (np.ndarray): Option values
+        
+        Returns:
+            np.ndarray: PnL values with same shape as option_values
+        """
+        if self.position_type == 'buy':
+            # For buying options, PnL = (current value - initial price) * 100 * num_contracts
+            return (option_values - self.option_price) * 100 * self.num_contracts
+        else:  # sell
+            # For selling options, PnL = (initial price - current value) * 100 * num_contracts
+            return (self.option_price - option_values) * 100 * self.num_contracts
+
 def calculate_price_probabilities(ticker, current_price, future_dates, price_range, historical_volatility=None):
     """
     Calculate the probability distribution of stock prices at future dates using log-normal distribution
@@ -321,45 +480,31 @@ def simulate_option_pnl(
     # Generate price range
     price_range = np.linspace(min_price, max_price, 50)
     
-    # Create empty matrices for PnL and option values
-    pnl_matrix = np.zeros((len(date_range), len(price_range)))
-    option_value_matrix = np.zeros((len(date_range), len(price_range)))
+    # Create 2D price grid for the strategy to calculate on
+    price_grid = np.zeros((len(date_range), len(price_range)))
+    for i in range(len(date_range)):
+        price_grid[i, :] = price_range
     
-    # Calculate PnL for each combination of date and price
-    for i, date in enumerate(date_range):
-        # Calculate time to expiry in years
-        time_to_expiry = (actual_expiry_date_dt - date).days / 365.0
-        
-        for j, price in enumerate(price_range):
-            # Calculate option price using Black-Scholes
-            option_value = black_scholes_price(
-                S=price,
-                K=strike_price,
-                T=time_to_expiry,
-                r=risk_free_rate,
-                sigma=implied_volatility,
-                option_type=option_type
-            )
-            
-            option_value_matrix[i, j] = option_value
-            
-            # Calculate PnL based on position type
-            if position_type.lower() == 'buy':
-                # For buying options, PnL = (current value - initial price) * 100 * num_contracts
-                pnl_matrix[i, j] = (option_value - option_price) * 100 * num_contracts
-            else:  # sell
-                # For selling options, PnL = (initial price - current value) * 100 * num_contracts
-                pnl_matrix[i, j] = (option_price - option_value) * 100 * num_contracts
-    
-    # Calculate greeks at the start
-    initial_greeks = calculate_option_greeks(
-        S=current_price,
-        K=strike_price,
-        T=days_to_expiry / 365.0,
-        r=risk_free_rate,
-        sigma=implied_volatility,
-        option_type=option_type
+    # Create the option strategy
+    strategy = OptionStrategy(
+        ticker=ticker,
+        option_type=option_type,
+        strike_price=strike_price,
+        expiry_date=actual_expiry_date,
+        current_price=current_price,
+        option_price=option_price,
+        implied_volatility=implied_volatility,
+        position_type=position_type,
+        num_contracts=num_contracts,
+        risk_free_rate=risk_free_rate
     )
+    
+    # Calculate option values and PnL matrix using the strategy
+    # Create times_to_expiry array (from today to expiry)
+    times_to_expiry = np.array([(actual_expiry_date_dt - (start_date_dt + timedelta(days=i))).days / 365.0 
+                              for i in range(days_to_expiry + 1)])
+    
+    pnl_matrix = strategy.calculate_pnl(price_grid, times_to_expiry)
     
     # Calculate price probability distributions using historical volatility (not implied volatility)
     historical_volatility = calculate_historical_volatility(ticker)
@@ -370,6 +515,13 @@ def simulate_option_pnl(
         price_range=price_range,
         historical_volatility=historical_volatility
     )
+    
+    # Calculate option values (needed for some visualizations)
+    option_value_matrix = np.zeros((len(date_range), len(price_range)))
+    for i, date in enumerate(date_range):
+        time_to_expiry = (actual_expiry_date_dt - date).days / 365.0
+        for j, price in enumerate(price_range):
+            option_value_matrix[i, j] = strategy.calculate_option_value(price, time_to_expiry)
     
     # Return results
     return {
@@ -392,9 +544,10 @@ def simulate_option_pnl(
         'price_range': price_range,
         'pnl_matrix': pnl_matrix,
         'option_value_matrix': option_value_matrix,
-        'initial_greeks': initial_greeks,
+        'initial_greeks': strategy.initial_greeks,
         'risk_free_rate': risk_free_rate,
-        'price_probabilities': price_probabilities
+        'price_probabilities': price_probabilities,
+        'strategy': strategy  # Include the strategy object in the results
     }
 
 def plot_pnl_slices(simulation_results, save_path=None):
