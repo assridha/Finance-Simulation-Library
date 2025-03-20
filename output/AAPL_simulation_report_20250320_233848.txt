@@ -1,0 +1,35 @@
+================================================================================
+                         STOCK PRICE SIMULATION REPORT                          
+================================================================================
+
+Simulation Parameters:
+  - Ticker: AAPL
+  - Current Price: $214.10
+  - Volatility: 30.26%
+  - Risk-Free Rate: 4.18%
+  - Days Simulated: 7
+  - Number of Simulations: 100
+
+Price Distribution at End of Simulation:
+  - Mean Price: $215.28 (0.55%)
+  - Median Price: $214.37 (0.13%)
+  - Standard Deviation: $9.66 (4.51%)
+  - Minimum Price: $189.51 (-11.48%)
+  - Maximum Price: $239.03 (11.64%)
+
+Percentiles:
+  - 10th Percentile: $204.51 (-4.48%)
+  - 25th Percentile: $208.72 (-2.51%)
+  - 50th Percentile: $214.37 (0.13%)
+  - 75th Percentile: $221.90 (3.64%)
+  - 90th Percentile: $228.18 (6.57%)
+
+Probability Analysis:
+  - Probability of Price Increase: 50.00%
+  - Probability of >10% Increase: 2.00%
+  - Probability of >10% Decrease: 2.00%
+
+Expected Return: 0.55%
+  - Annualized: 28.85%
+
+================================================================================
