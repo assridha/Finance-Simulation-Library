@@ -207,3 +207,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - This library uses [yfinance](https://github.com/ranaroussi/yfinance) for fetching market data
 - Visualization is powered by [matplotlib](https://matplotlib.org/)
+- Code was generated using Cursor with Sonnet 3.7
