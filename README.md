@@ -36,7 +36,7 @@ pip install -e .
 
 ```bash
 # Clone the repository
-git clone https://github.com/assridha/financial_sim_library.git
+git clone https://github.com/your-username/financial_sim_library.git
 cd financial_sim_library
 
 # Install dependencies
@@ -80,13 +80,13 @@ The library includes a command-line interface for quick simulations:
 
 ```bash
 # Run a basic simulation
-python -m financial_sim_library.run_stock_simulator AAPL
+python3 -m financial_sim_library.run_stock_simulator AAPL
 
 # Customize the simulation
-python -m financial_sim_library.run_stock_simulator AAPL --days 90 --simulations 500 --plot-type paths
+python3 -m financial_sim_library.run_stock_simulator AAPL --days 90 --simulations 500 --plot-type paths
 
 # Save the results
-python -m financial_sim_library.run_stock_simulator AAPL --save-plots --output-dir results
+python3 -m financial_sim_library.run_stock_simulator AAPL --save-plots --output-dir results
 ```
 
 ## Main Components
@@ -120,7 +120,7 @@ More detailed examples are available in the `examples` directory:
 To run the examples:
 
 ```bash
-python -m financial_sim_library.examples.stock_simulation_examples
+python3 -m financial_sim_library.examples.stock_simulation_examples
 ```
 
 ## Architecture
@@ -139,7 +139,7 @@ The library is designed with extensibility in mind:
 Tests are available in the `tests` directory and can be run with:
 
 ```bash
-python -m unittest discover -s financial_sim_library/tests
+python3 -m unittest discover -s financial_sim_library/tests
 # or
 pytest financial_sim_library/tests
 ```
