@@ -1,4 +1,4 @@
-# Financial Simulation Library
+# Finance Simulation Library
 
 A comprehensive Python library for simulating and analyzing financial instruments, including stock prices, options, and portfolios.
 
