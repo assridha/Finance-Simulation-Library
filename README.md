@@ -36,7 +36,7 @@ pip install -e .
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/financial_sim_library.git
+git clone https://github.com/assridha/financial_sim_library.git
 cd financial_sim_library
 
 # Install dependencies
