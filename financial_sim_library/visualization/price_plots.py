@@ -7,19 +7,20 @@ This module provides functions for visualizing stock price simulations.
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
-def plot_price_simulations(simulation_results, num_paths_to_plot=5, confidence_interval=0.95, 
+def plot_price_simulations(simulation_results, title=None, num_paths_to_plot=5, confidence_interval=0.95, 
                           show_mean=True, show_ci=True, figsize=(12, 8), save_path=None):
     """
     Plot the simulated price paths with confidence intervals.
     
     Args:
         simulation_results (dict): Results from StockPriceModel.simulate()
+        title (str, optional): Custom title for the plot. If None, a default title is used.
         num_paths_to_plot (int, optional): Number of individual paths to plot. Defaults to 5.
         confidence_interval (float, optional): Confidence interval to display (0-1). Defaults to 0.95.
         show_mean (bool, optional): Whether to show the mean path. Defaults to True.
@@ -31,28 +32,34 @@ def plot_price_simulations(simulation_results, num_paths_to_plot=5, confidence_i
         matplotlib.figure.Figure: The figure object
     """
     # Extract data from simulation results
-    ticker = simulation_results['ticker']
-    current_price = simulation_results['current_price']
     price_paths = simulation_results['price_paths']
-    dates = simulation_results['dates']
+    current_price = simulation_results['current_price']
+    time_points = simulation_results['time_points']
     
-    # Calculate statistics if not already in results
-    if 'statistics' not in simulation_results:
-        # Calculate mean and percentiles for confidence intervals
-        mean_path = np.mean(price_paths, axis=0)
-        lower_percentile = (1 - confidence_interval) / 2 * 100
-        upper_percentile = (1 + confidence_interval) / 2 * 100
-        lower_ci = np.percentile(price_paths, lower_percentile, axis=0)
-        upper_ci = np.percentile(price_paths, upper_percentile, axis=0)
-    else:
-        # If statistics are already calculated, extract mean path
-        mean_path = simulation_results['mean_path'] if 'mean_path' in simulation_results else np.mean(price_paths, axis=0)
+    # Convert time points to dates
+    start_date = datetime.now()
+    # Convert time points to business days (excluding weekends)
+    dates = []
+    for t in time_points:
+        # Calculate target date by adding business days
+        current_date = start_date
+        business_days_to_add = int(t * 252)  # 252 trading days per year
+        days_added = 0
         
-        # Calculate confidence intervals if not provided
-        lower_percentile = (1 - confidence_interval) / 2 * 100
-        upper_percentile = (1 + confidence_interval) / 2 * 100
-        lower_ci = np.percentile(price_paths, lower_percentile, axis=0)
-        upper_ci = np.percentile(price_paths, upper_percentile, axis=0)
+        while days_added < business_days_to_add:
+            current_date += timedelta(days=1)
+            # Skip weekends (5=Saturday, 6=Sunday)
+            if current_date.weekday() < 5:  # Monday-Friday
+                days_added += 1
+                
+        dates.append(current_date)
+    
+    # Calculate statistics
+    mean_path = np.mean(price_paths, axis=0)
+    lower_percentile = (1 - confidence_interval) / 2 * 100
+    upper_percentile = (1 + confidence_interval) / 2 * 100
+    lower_ci = np.percentile(price_paths, lower_percentile, axis=0)
+    upper_ci = np.percentile(price_paths, upper_percentile, axis=0)
     
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
@@ -85,19 +92,25 @@ def plot_price_simulations(simulation_results, num_paths_to_plot=5, confidence_i
     ax.plot(dates[0], current_price, 'go', markersize=8, label='Starting Price')
     
     # Set title and labels
-    title = f"{ticker} Price Simulation\n"
-    if 'parameters' in simulation_results:
-        params = simulation_results['parameters']
-        if 'volatility' in params:
-            title += f"Volatility: {params['volatility']:.2%}, "
-        if 'risk_free_rate' in params:
-            title += f"Risk-Free Rate: {params['risk_free_rate']:.2%}, "
-        if 'days_simulated' in params:
-            title += f"Days: {params['days_simulated']}"
+    if title is None:
+        title = "Price Simulation\n"
+        if 'parameters' in simulation_results:
+            params = simulation_results['parameters']
+            if 'volatility' in params:
+                title += f"Volatility: {params['volatility']:.2%}, "
+            if 'risk_free_rate' in params:
+                title += f"Risk-Free Rate: {params['risk_free_rate']:.2%}"
     
     ax.set_title(title)
     ax.set_xlabel('Date')
     ax.set_ylabel('Price ($)')
+
+    # Apply semilogy scale to y-axis (logarithmic scale) if price gain is significant
+    if np.max(mean_path) / current_price > 5.0:
+        ax.set_yscale('log')
+        logger.info("Applied logarithmic scale to y-axis due to significant price gain (>5x)")
+
+
     
     # Add grid and legend
     ax.grid(True, alpha=0.3)
@@ -118,13 +131,14 @@ def plot_price_simulations(simulation_results, num_paths_to_plot=5, confidence_i
     
     return fig
 
-def plot_price_distribution(simulation_results, date_index=-1, bins=50, 
+def plot_price_distribution(simulation_results, title=None, date_index=-1, bins=50, 
                            figsize=(12, 8), save_path=None):
     """
     Plot the distribution of simulated prices at a specific date.
     
     Args:
         simulation_results (dict): Results from StockPriceModel.simulate()
+        title (str, optional): Custom title for the plot. If None, a default title is used.
         date_index (int, optional): Index of the date to plot. Defaults to -1 (final date).
         bins (int, optional): Number of histogram bins. Defaults to 50.
         figsize (tuple, optional): Figure size. Defaults to (12, 8).
@@ -134,10 +148,13 @@ def plot_price_distribution(simulation_results, date_index=-1, bins=50,
         matplotlib.figure.Figure: The figure object
     """
     # Extract data from simulation results
-    ticker = simulation_results['ticker']
-    current_price = simulation_results['current_price']
     price_paths = simulation_results['price_paths']
-    dates = simulation_results['dates']
+    current_price = simulation_results['current_price']
+    time_points = simulation_results['time_points']
+    
+    # Convert time points to dates
+    start_date = datetime.now()
+    dates = [start_date + timedelta(days=int(t*252)) for t in time_points]
     
     # Get prices at the specified date
     prices_at_date = price_paths[:, date_index]
@@ -173,13 +190,14 @@ def plot_price_distribution(simulation_results, date_index=-1, bins=50,
         ax.axvline(x=value, color='purple', linestyle=':', alpha=0.5, linewidth=1)
     
     # Set title and labels
-    title = f"{ticker} Price Distribution on {selected_date.strftime('%Y-%m-%d')}\n"
-    if 'parameters' in simulation_results:
-        params = simulation_results['parameters']
-        if 'volatility' in params:
-            title += f"Volatility: {params['volatility']:.2%}, "
-        if 'risk_free_rate' in params:
-            title += f"Risk-Free Rate: {params['risk_free_rate']:.2%}"
+    if title is None:
+        title = f"Price Distribution on {selected_date.strftime('%Y-%m-%d')}\n"
+        if 'parameters' in simulation_results:
+            params = simulation_results['parameters']
+            if 'volatility' in params:
+                title += f"Volatility: {params['volatility']:.2%}, "
+            if 'risk_free_rate' in params:
+                title += f"Risk-Free Rate: {params['risk_free_rate']:.2%}"
     
     ax.set_title(title)
     ax.set_xlabel('Price ($)')
@@ -206,7 +224,7 @@ def plot_price_distribution(simulation_results, date_index=-1, bins=50,
     # Add expected return information
     expected_return = (mean_price / current_price - 1) * 100
     prob_above_current = np.mean(prices_at_date > current_price) * 100
-    days_from_now = (selected_date - dates[0]).days
+    days_from_now = int(time_points[date_index] * 252)
     
     return_text = (
         f"Expected Return: {expected_return:.2f}%\n"

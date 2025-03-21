@@ -11,63 +11,46 @@ import yfinance as yf
 import logging
 from .base_model import StockPriceModel
 from ...utils.financial_calcs import get_risk_free_rate
+from typing import Dict, Any, Optional, List
+from .growth_models import GrowthModel, FixedGrowthModel
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 class GBMModel(StockPriceModel):
-    """
-    Geometric Brownian Motion model for stock price simulation.
+    """Geometric Brownian Motion model with optional growth component."""
     
-    The GBM model is described by the stochastic differential equation:
-    dS = μS dt + σS dW
-    
-    where:
-    - S is the stock price
-    - μ is the drift (expected return)
-    - σ is the volatility
-    - dW is a Wiener process (random term)
-    """
-    
-    def __init__(self, ticker, current_price=None, volatility=None, risk_free_rate=None, seed=None):
+    def __init__(
+        self,
+        ticker: str,
+        growth_model: Optional[GrowthModel] = None,
+        risk_free_rate: Optional[float] = None,
+        volatility: Optional[float] = None,
+        days_to_simulate: int = 30,
+        num_simulations: int = 1000
+    ):
         """
         Initialize the GBM model.
         
         Args:
-            ticker (str): The ticker symbol for the stock
-            current_price (float, optional): The current price of the stock.
-                If None, will be fetched from data source.
-            volatility (float, optional): Historical volatility.
-                If None, will be calculated from historical data.
-            risk_free_rate (float, optional): Risk-free rate.
-                If None, will be fetched from data source.
-            seed (int, optional): Random seed for reproducibility.
+            ticker: Stock ticker symbol
+            growth_model: Optional growth model to incorporate into the simulation
+            risk_free_rate: Optional risk-free rate (if None, will be fetched)
+            volatility: Optional volatility (if None, will be calculated from historical data)
+            days_to_simulate: Number of days to simulate
+            num_simulations: Number of simulation paths to generate
         """
-        super().__init__(ticker, current_price)
-        self.volatility = volatility
+        super().__init__(ticker)
+        self.growth_model = growth_model or FixedGrowthModel(growth_rate=0.0)
         self.risk_free_rate = risk_free_rate
-        self.seed = seed
+        self.volatility = volatility
+        self.days_to_simulate = days_to_simulate
+        self.num_simulations = num_simulations
+        self.current_price = None
+        self.simulation_results = None
         
-        # Fetch current price if not provided
-        if self.current_price is None:
-            self._fetch_current_price()
-            
-        # Additional validation
-        if self.volatility is not None and (self.volatility <= 0 or self.volatility > 1):
-            raise ValueError("Volatility must be a positive number between 0 and 1")
-        
-        if self.risk_free_rate is not None and self.risk_free_rate < 0:
-            raise ValueError("Risk-free rate cannot be negative")
-    
-    def _fetch_current_price(self):
-        """Fetch the current price of the stock."""
-        try:
-            stock = yf.Ticker(self.ticker)
-            self.current_price = stock.history(period="1d")['Close'].iloc[-1]
-            logger.info(f"Fetched current price for {self.ticker}: ${self.current_price:.2f}")
-        except Exception as e:
-            logger.error(f"Error fetching current price for {self.ticker}: {str(e)}")
-            raise ValueError(f"Could not fetch current price for {self.ticker}")
+        # Calibrate the model on initialization
+        self.calibrate()
     
     def calibrate(self, historical_data=None, lookback_days=30):
         """
@@ -98,6 +81,10 @@ class GBMModel(StockPriceModel):
                 logger.error(f"Error fetching historical data for {self.ticker}: {str(e)}")
                 raise ValueError(f"Could not fetch historical data for {self.ticker}")
         
+        # Get current price
+        self.current_price = historical_data['Close'].iloc[-1]
+        logger.info(f"Current price for {self.ticker}: ${self.current_price:.2f}")
+        
         # Calculate historical volatility if not provided
         if self.volatility is None:
             # Calculate daily returns
@@ -124,75 +111,114 @@ class GBMModel(StockPriceModel):
             'current_price': self.current_price
         }
     
-    def simulate(self, days_to_simulate, num_simulations, start_date=None):
+    def simulate(self, **kwargs) -> Dict[str, Any]:
         """
-        Simulate future stock price paths using Geometric Brownian Motion.
+        Run the GBM simulation with growth component.
         
         Args:
-            days_to_simulate (int): Number of days to simulate
-            num_simulations (int): Number of simulation paths to generate
-            start_date (datetime, optional): Start date for the simulation.
-                If None, uses current date.
-                
+            **kwargs: Additional parameters including:
+                - days_to_simulate: Number of days to simulate (default: self.days_to_simulate)
+                - num_simulations: Number of simulation paths (default: self.num_simulations)
+                - Additional parameters to pass to the growth model
+            
         Returns:
-            dict: Simulation results containing:
-                - price_paths: 2D array of price paths
-                - dates: Array of dates for the simulation
-                - parameters: Model parameters used
-                - statistics: Statistical summary of the simulation
+            Dict containing simulation results and statistics
         """
-        logger.info(f"Starting GBM simulation for {self.ticker}: {num_simulations} paths over {days_to_simulate} days")
-        
-        # Set random seed if provided
-        if self.seed is not None:
-            np.random.seed(self.seed)
-        
-        # Ensure model is calibrated
-        if self.volatility is None or self.risk_free_rate is None:
+        if self.current_price is None:
             self.calibrate()
         
-        # Set start date if not provided
-        if start_date is None:
-            start_date = datetime.now()
+        # Get simulation parameters from kwargs or use instance defaults
+        days_to_simulate = kwargs.get('days_to_simulate', self.days_to_simulate)
+        num_simulations = kwargs.get('num_simulations', self.num_simulations)
         
-        # Generate business dates for simulation
-        business_dates = self._generate_business_dates(start_date, days_to_simulate)
+        # Time parameters
+        dt = 1/252  # Daily time step
+        t = np.arange(0, days_to_simulate * dt, dt)
         
-        # Create a time grid (convert days to years for financial calculations)
-        dt = 1/252  # Approximately 252 trading days in a year
+        # Initialize price paths
+        price_paths = np.zeros((num_simulations, len(t)))
+        price_paths[:, 0] = self.current_price
         
-        # Initialize price paths array
-        price_paths = np.zeros((num_simulations, len(business_dates)))
-        price_paths[:, 0] = self.current_price  # Set initial price
-        
-        # Parameters for the simulation
-        drift = (self.risk_free_rate - 0.5 * self.volatility**2) * dt
-        vol_sqrt_dt = self.volatility * np.sqrt(dt)
+        # Generate random increments
+        dW = np.random.normal(0, np.sqrt(dt), (num_simulations, len(t)-1))
         
         # Simulate price paths
-        for i in range(num_simulations):
-            for t in range(1, len(business_dates)):
-                # Generate random shock from standard normal distribution
-                rand_shock = np.random.normal(0, 1)
-                
-                # Update price using discretized GBM equation
-                price_paths[i, t] = price_paths[i, t-1] * np.exp(drift + vol_sqrt_dt * rand_shock)
+        for i in range(1, len(t)):
+            # Calculate growth rate for current time step
+            growth_rate = self.growth_model.calculate_growth_rate(t[i-1], dt, **kwargs)
+            
+            # GBM formula with growth component
+            drift = growth_rate + (self.risk_free_rate - 0.5 * self.volatility**2) * dt
+            diffusion = self.volatility * dW[:, i-1]
+            
+            # Update prices
+            price_paths[:, i] = price_paths[:, i-1] * np.exp(drift + diffusion)
         
-        # Create simulation results dictionary
-        simulation_results = {
-            'ticker': self.ticker,
-            'current_price': self.current_price,
+        # Calculate statistics
+        final_prices = price_paths[:, -1]
+        returns = (final_prices - self.current_price) / self.current_price * 100
+        
+        stats = {
+            'mean': np.mean(final_prices),
+            'median': np.median(final_prices),
+            'std': np.std(final_prices),
+            'min': np.min(final_prices),
+            'max': np.max(final_prices),
+            'expected_return': np.mean(returns),
+            'return_std': np.std(returns),
+            'prob_above_current': np.mean(final_prices > self.current_price) * 100,
+            'prob_above_10_percent': np.mean(returns > 10) * 100,
+            'prob_below_10_percent': np.mean(returns < -10) * 100
+        }
+        
+        # Store results
+        self.simulation_results = {
             'price_paths': price_paths,
-            'dates': business_dates,
+            'time_points': t,
+            'statistics': stats,
+            'current_price': self.current_price,
             'parameters': {
                 'volatility': self.volatility,
                 'risk_free_rate': self.risk_free_rate,
-                'days_simulated': days_to_simulate,
-                'num_simulations': num_simulations
+                'growth_model': self.growth_model.get_parameters()
             }
         }
         
-        # Add statistical analysis
-        simulation_results = self.analyze_results(simulation_results)
-        
-        return simulation_results 
+        return self.simulation_results
+    
+    def get_parameters(self) -> Dict[str, Any]:
+        """Get the current model parameters."""
+        return {
+            'ticker': self.ticker,
+            'current_price': self.current_price,
+            'volatility': self.volatility,
+            'risk_free_rate': self.risk_free_rate,
+            'growth_model': self.growth_model.get_parameters() if self.growth_model else None,
+            'days_to_simulate': self.days_to_simulate,
+            'num_simulations': self.num_simulations
+        }
+    
+    def set_parameters(self, **kwargs) -> None:
+        """Set model parameters."""
+        if 'ticker' in kwargs:
+            self.ticker = kwargs['ticker']
+        if 'volatility' in kwargs:
+            self.volatility = kwargs['volatility']
+        if 'risk_free_rate' in kwargs:
+            self.risk_free_rate = kwargs['risk_free_rate']
+        if 'growth_model' in kwargs:
+            self.growth_model = kwargs['growth_model']
+        if 'days_to_simulate' in kwargs:
+            self.days_to_simulate = kwargs['days_to_simulate']
+        if 'num_simulations' in kwargs:
+            self.num_simulations = kwargs['num_simulations']
+    
+    def _fetch_current_price(self):
+        """Fetch the current price of the stock."""
+        try:
+            stock = yf.Ticker(self.ticker)
+            self.current_price = stock.history(period="1d")['Close'].iloc[-1]
+            logger.info(f"Fetched current price for {self.ticker}: ${self.current_price:.2f}")
+        except Exception as e:
+            logger.error(f"Error fetching current price for {self.ticker}: {str(e)}")
+            raise ValueError(f"Could not fetch current price for {self.ticker}") 

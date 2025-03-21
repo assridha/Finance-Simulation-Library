@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The Financial Simulation Library will be a comprehensive Python package for simulating and analyzing stock prices, option pricing, and portfolio performance. It aims to provide tools for both educational purposes and practical financial decision-making, supporting various trading and investment strategies.
+The Financial Simulation Library will be a comprehensive Python package for simulating and analyzing stock prices, option pricing, and portfolio performance. It aims to provide tools for both educational purposes and practical financial decision-making, supporting various trading and investment strategies. The library incorporates various growth models to capture different aspects of price evolution, from simple fixed growth to complex market cycles.
 
 ## 2. Key Modules and Features
 
@@ -129,6 +129,7 @@ The Financial Simulation Library will be a comprehensive Python package for simu
   - Implement base classes for models
   - Set up testing framework
   - Port over existing GBM and Black-Scholes implementations
+  - Add growth models to GBM
 
 - **Week 2**: Enhance Stock Price Simulator
   - Implement ARIMA model integration

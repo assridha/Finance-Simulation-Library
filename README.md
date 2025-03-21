@@ -5,6 +5,7 @@ A comprehensive Python library for simulating and analyzing financial instrument
 ## Features
 
 - **Stock Price Simulation**: Generate realistic stock price paths using Geometric Brownian Motion (GBM)
+- **Growth Models**: Flexible framework for incorporating various growth models into price simulations
 - **Volatility Analysis**: Calculate historical volatility and other key market metrics
 - **Financial Data Fetching**: Easily obtain historical price data, risk-free rates, and more
 - **Visualization Tools**: Create beautiful, informative plots of simulation results
@@ -48,14 +49,23 @@ pip install -e .
 
 ## Quick Start
 
-### Stock Price Simulation
+### Stock Price Simulation with Growth Models
 
 ```python
 from financial_sim_library.stock_simulator.models.gbm import GBMModel
+from financial_sim_library.stock_simulator.models.growth_models import (
+    FixedGrowthModel,
+    PowerLawGrowthModel,
+    ExogenousGrowthModel,
+    CompositeGrowthModel
+)
 from financial_sim_library.visualization.price_plots import plot_price_simulations
 
-# Create a GBM model for Apple stock
-model = GBMModel(ticker="AAPL")
+# Create a GBM model with fixed growth
+model = GBMModel(
+    ticker="AAPL",
+    growth_model=FixedGrowthModel(growth_rate=0.1)  # 10% annual growth
+)
 
 # Run a simulation
 results = model.simulate(
@@ -73,6 +83,39 @@ print(f"Probability of price increase: {stats['prob_above_current']:.2f}%")
 # Visualize the results
 plot_price_simulations(results)
 ```
+
+### Available Growth Models
+
+1. **Fixed Growth Model**
+   - Constant annual growth rate
+   - Suitable for stable, predictable growth scenarios
+
+2. **Power Law Growth Model**
+   - Growth rate scales with time
+   - Useful for modeling diminishing returns or accelerating growth
+
+3. **Exogenous Growth Model**
+   - Custom growth function based on external factors
+   - Supports market cycles, seasonal patterns, and other complex growth patterns
+
+4. **Composite Growth Model**
+   - Combines multiple growth models with weights
+   - Allows for complex growth scenarios combining different factors
+
+### Growth Model Examples
+
+Run the growth model examples to see different growth scenarios in action:
+
+```bash
+python3 -m financial_sim_library.examples.growth_model_examples
+```
+
+This will demonstrate:
+- Fixed growth with 10% annual rate
+- Power law growth with diminishing returns
+- Oscillating growth based on market cycles
+- Composite growth combining multiple factors
+- Complex growth with market cycles and exogenous variables
 
 ### Command Line Usage
 
