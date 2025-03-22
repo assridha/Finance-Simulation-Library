@@ -9,14 +9,18 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import logging
+import pandas as pd
+import mplfinance as mpf
+from typing import Optional, Dict, List, Tuple
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 def plot_price_simulations(simulation_results, title=None, num_paths_to_plot=5, confidence_interval=0.95, 
-                          show_mean=True, show_ci=True, figsize=(12, 8), save_path=None):
+                          show_mean=True, show_ci=True, figsize=(12, 8), save_path=None,
+                          historical_data: Optional[pd.DataFrame] = None, days_to_show: int = 30):
     """
-    Plot the simulated price paths with confidence intervals.
+    Plot the simulated price paths with confidence intervals and optional historical candlestick data.
     
     Args:
         simulation_results (dict): Results from StockPriceModel.simulate()
@@ -27,6 +31,9 @@ def plot_price_simulations(simulation_results, title=None, num_paths_to_plot=5, 
         show_ci (bool, optional): Whether to show confidence intervals. Defaults to True.
         figsize (tuple, optional): Figure size. Defaults to (12, 8).
         save_path (str, optional): Path to save the plot. If None, the plot is displayed.
+        historical_data (pd.DataFrame, optional): Historical OHLCV data for candlestick chart.
+            DataFrame should have columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+        days_to_show (int, optional): Number of days of historical data to show. Defaults to 30.
     
     Returns:
         matplotlib.figure.Figure: The figure object
@@ -64,9 +71,104 @@ def plot_price_simulations(simulation_results, title=None, num_paths_to_plot=5, 
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
     
-    # Format dates for x-axis
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-    plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(dates)//10)))  # Dynamic interval
+    # Format dates for x-axis with dynamic tick placement
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    
+    # Calculate optimal number of ticks based on figure width
+    fig_width = figsize[0]
+    optimal_ticks = max(5, min(15, int(fig_width / 2)))  # Between 5 and 15 ticks
+    
+    # Calculate date range
+    if historical_data is not None:
+        date_range = historical_data.index[-1] - historical_data.index[0]
+    else:
+        date_range = dates[-1] - dates[0]
+    
+    # Choose appropriate locator based on date range
+    if date_range.days <= 30:
+        # For short ranges, show daily ticks
+        ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(dates)//optimal_ticks)))
+    elif date_range.days <= 90:
+        # For medium ranges, show weekly ticks
+        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO, interval=max(1, len(dates)//(optimal_ticks*5))))
+    else:
+        # For long ranges, show monthly ticks
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=max(1, len(dates)//(optimal_ticks*20))))
+    
+    # Calculate y-axis limits based on all data
+    y_min = float('inf')
+    y_max = float('-inf')
+    
+    # Initialize x-axis limits
+    x_min = None
+    x_max = None
+    
+    # Plot historical candlestick data if provided
+    if historical_data is not None:
+        # Filter historical data to show only the last N days
+        historical_data = historical_data.tail(days_to_show)
+        
+        # Update y-axis limits with historical data
+        y_min = min(y_min, historical_data['Low'].min())
+        y_max = max(y_max, historical_data['High'].max())
+        
+        # Update x-axis limits with historical data
+        x_min = historical_data.index[0]
+        x_max = historical_data.index[-1]
+        
+        # Plot candlesticks
+        mpf.plot(historical_data, type='candle', style='charles',
+                ax=ax, volume=False, show_nontrading=True,
+                datetime_format='%Y-%m-%d', xrotation=45,
+                returnfig=True)  # Add returnfig=True to prevent automatic display
+        
+        # Adjust the simulation plot dates to start from the last historical date
+        last_hist_date = historical_data.index[-1]
+        simulation_start = last_hist_date + timedelta(days=1)
+        
+        # Convert time points to business days (excluding weekends)
+        dates = []
+        for t in time_points:
+            # Calculate target date by adding business days
+            current_date = simulation_start
+            business_days_to_add = int(t * 252)  # 252 trading days per year
+            days_added = 0
+            
+            while days_added < business_days_to_add:
+                current_date += timedelta(days=1)
+                # Skip weekends (5=Saturday, 6=Sunday)
+                if current_date.weekday() < 5:  # Monday-Friday
+                    days_added += 1
+                    
+            dates.append(current_date)
+    
+    # Update y-axis limits with simulation data
+    if show_ci:
+        y_min = min(y_min, lower_ci.min())
+        y_max = max(y_max, upper_ci.max())
+    else:
+        y_min = min(y_min, price_paths.min())
+        y_max = max(y_max, price_paths.max())
+    
+    # Add padding to y-axis limits (5% on each side)
+    y_range = y_max - y_min
+    y_min = y_min - 0.05 * y_range
+    y_max = y_max + 0.05 * y_range
+    
+    # Set y-axis limits
+    ax.set_ylim(y_min, y_max)
+    
+    # Update x-axis limits with simulation dates
+    if x_min is None:
+        x_min = dates[0]
+    x_max = max(x_max, dates[-1])
+    
+    # Add padding to x-axis limits (1 day on each side)
+    x_min = x_min - timedelta(days=1)
+    x_max = x_max + timedelta(days=1)
+    
+    # Set x-axis limits
+    ax.set_xlim(x_min, x_max)
     
     # Plot confidence intervals
     if show_ci:
@@ -109,8 +211,6 @@ def plot_price_simulations(simulation_results, title=None, num_paths_to_plot=5, 
     if np.max(mean_path) / current_price > 5.0:
         ax.set_yscale('log')
         logger.info("Applied logarithmic scale to y-axis due to significant price gain (>5x)")
-
-
     
     # Add grid and legend
     ax.grid(True, alpha=0.3)
@@ -248,6 +348,8 @@ def plot_price_distribution(simulation_results, title=None, date_index=-1, bins=
         logger.info(f"Saved plot to {save_path}")
         plt.close(fig)
     else:
+        # Clear any existing plots to prevent double display
+        plt.close('all')
         plt.show()
     
     return fig
@@ -345,6 +447,8 @@ def plot_price_heatmap(simulation_results, figsize=(14, 8), save_path=None):
         logger.info(f"Saved plot to {save_path}")
         plt.close(fig)
     else:
+        # Clear any existing plots to prevent double display
+        plt.close('all')
         plt.show()
     
     return fig 
