@@ -202,6 +202,28 @@ def plot_price_simulations(simulation_results, title=None, num_paths_to_plot=5, 
                 title += f"Volatility: {params['volatility']:.2%}, "
             if 'risk_free_rate' in params:
                 title += f"Risk-Free Rate: {params['risk_free_rate']:.2%}"
+            
+            # Add growth model information
+            if 'growth_model' in params:
+                growth_model = params['growth_model']
+                model_type = growth_model['metadata']['model_type']
+                
+                if model_type == 'fixed':
+                    title += f"\nGrowth Model: {growth_model['metadata']['description']} ({growth_model['growth_rate']:.1%} annual)"
+                elif model_type == 'power_law':
+                    title += f"\nGrowth Model: {growth_model['metadata']['description']} (k={growth_model['k']:.2f})"
+                elif model_type == 'exogenous':
+                    title += f"\nGrowth Model: {growth_model['metadata']['description']}"
+                elif model_type == 'composite':
+                    title += f"\nGrowth Model: {growth_model['metadata']['description']}"
+                    for name, component in growth_model['models'].items():
+                        component_type = component['metadata']['model_type']
+                        if component_type == 'fixed':
+                            title += f"\n  - {name}: Fixed ({component['growth_rate']:.1%} annual)"
+                        elif component_type == 'power_law':
+                            title += f"\n  - {name}: Power Law (k={component['k']:.2f})"
+                        elif component_type == 'exogenous':
+                            title += f"\n  - {name}: Exogenous"
     
     ax.set_title(title)
     ax.set_xlabel('Date')

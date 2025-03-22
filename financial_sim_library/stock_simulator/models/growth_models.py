@@ -41,6 +41,10 @@ class FixedGrowthModel(GrowthModel):
             growth_rate: Annual growth rate (e.g., 0.1 for 10% annual growth)
         """
         self.growth_rate = growth_rate
+        self.metadata = {
+            'model_type': 'fixed',
+            'description': 'Fixed annual growth rate model'
+        }
     
     def calculate_growth_rate(self, t: float, dt: float, **kwargs) -> float:
         """
@@ -57,7 +61,10 @@ class FixedGrowthModel(GrowthModel):
         return np.log(1 + self.growth_rate) * dt
     
     def get_parameters(self) -> Dict[str, Any]:
-        return {"growth_rate": self.growth_rate}
+        return {
+            "growth_rate": self.growth_rate,
+            "metadata": self.metadata
+        }
     
     def set_parameters(self, **kwargs) -> None:
         if "growth_rate" in kwargs:
@@ -74,6 +81,10 @@ class PowerLawGrowthModel(GrowthModel):
             k: Growth constant that determines the strength of the power law
         """
         self.k = k
+        self.metadata = {
+            'model_type': 'power_law',
+            'description': 'Power law growth model with diminishing returns'
+        }
     
     def calculate_growth_rate(self, t: float, dt: float, **kwargs) -> float:
         """
@@ -91,7 +102,10 @@ class PowerLawGrowthModel(GrowthModel):
         return self.k * np.log(1 + dt/t)
     
     def get_parameters(self) -> Dict[str, Any]:
-        return {"k": self.k}
+        return {
+            "k": self.k,
+            "metadata": self.metadata
+        }
     
     def set_parameters(self, **kwargs) -> None:
         if "k" in kwargs:
@@ -110,6 +124,10 @@ class ExogenousGrowthModel(GrowthModel):
         """
         self.growth_function = growth_function
         self.exogenous_data = {}
+        self.metadata = {
+            'model_type': 'exogenous',
+            'description': 'Custom growth model based on external factors'
+        }
     
     def calculate_growth_rate(self, t: float, dt: float, **kwargs) -> float:
         """
@@ -129,7 +147,8 @@ class ExogenousGrowthModel(GrowthModel):
     def get_parameters(self) -> Dict[str, Any]:
         return {
             "growth_function": self.growth_function,
-            "exogenous_data": self.exogenous_data
+            "exogenous_data": self.exogenous_data,
+            "metadata": self.metadata
         }
     
     def set_parameters(self, **kwargs) -> None:
@@ -155,6 +174,12 @@ class CompositeGrowthModel(GrowthModel):
         # Normalize weights
         total_weight = sum(self.weights.values())
         self.weights = {name: weight/total_weight for name, weight in self.weights.items()}
+        
+        self.metadata = {
+            'model_type': 'composite',
+            'description': 'Combined growth model with weighted components',
+            'components': {name: model.metadata for name, model in models.items()}
+        }
     
     def calculate_growth_rate(self, t: float, dt: float, **kwargs) -> float:
         """
@@ -176,7 +201,8 @@ class CompositeGrowthModel(GrowthModel):
     def get_parameters(self) -> Dict[str, Any]:
         return {
             "models": self.models,
-            "weights": self.weights
+            "weights": self.weights,
+            "metadata": self.metadata
         }
     
     def set_parameters(self, **kwargs) -> None:
