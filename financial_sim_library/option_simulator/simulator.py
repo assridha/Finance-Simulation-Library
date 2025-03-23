@@ -4,6 +4,7 @@ from typing import Dict, Optional
 from .base import OptionSimulator, OptionStrategy, OptionContract
 from ..stock_simulator.models.gbm import GBMModel
 from datetime import datetime
+from scipy.optimize import minimize_scalar
 
 class MonteCarloOptionSimulator(OptionSimulator):
     """Monte Carlo simulator for option strategies using various price models."""
@@ -21,8 +22,16 @@ class MonteCarloOptionSimulator(OptionSimulator):
             first_contract = strategy.positions[0].contract
             self.symbol = first_contract.symbol
             self.initial_price = first_contract.underlying_price
-            # Only use provided volatility or first contract IV for stock price simulation
-            self.stock_volatility = volatility or first_contract.implied_volatility
+            # Only use provided volatility or calculate from first contract
+            self.stock_volatility = volatility or self._calculate_implied_volatility(
+                first_contract.premium, 
+                first_contract.underlying_price,
+                first_contract.strike_price,
+                first_contract.time_to_expiry,
+                first_contract.risk_free_rate,
+                first_contract.option_type,
+                first_contract.dividend_yield
+            )
             self.risk_free_rate = risk_free_rate or first_contract.risk_free_rate
             
             # Initialize the stock price model
@@ -31,6 +40,40 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 volatility=self.stock_volatility,
                 risk_free_rate=self.risk_free_rate
             )
+    
+    def _calculate_implied_volatility(self, market_price, S, K, T, r, option_type='call', q=0):
+        """Calculate implied volatility using Black-Scholes and market price."""
+        # Define the objective function to minimize
+        def objective(sigma):
+            bs_price = self._black_scholes(S, K, T, r, sigma, option_type, q)
+            return (bs_price - market_price) ** 2
+        
+        # Use a bounded optimization to find implied volatility
+        result = minimize_scalar(objective, bounds=(0.001, 5.0), method='bounded')
+        
+        if result.success:
+            return result.x
+        else:
+            # Default to a reasonable IV if calculation fails
+            return 0.3
+    
+    def _black_scholes(self, S, K, T, r, sigma, option_type='call', q=0):
+        """Calculate Black-Scholes price for a single option."""
+        if T <= 0:
+            if option_type.lower() == 'call':
+                return max(0, S - K)
+            else:
+                return max(0, K - S)
+                
+        d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        
+        if option_type.lower() == 'call':
+            price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+        else:  # put
+            price = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
+        
+        return price
     
     def run_simulation(self, num_paths: int = 1000, num_steps: int = 252) -> Dict[str, np.ndarray]:
         """Run the Monte Carlo simulation for the option strategy.
@@ -128,13 +171,24 @@ class MonteCarloOptionSimulator(OptionSimulator):
         # Extract contract parameters
         option_params = []
         for pos in self.strategy.positions:
+            # Calculate IV from entry price instead of using the field
+            calculated_iv = self._calculate_implied_volatility(
+                pos.entry_price,
+                pos.contract.underlying_price,
+                pos.contract.strike_price,
+                pos.contract.time_to_expiry,
+                pos.contract.risk_free_rate,
+                pos.contract.option_type,
+                pos.contract.dividend_yield
+            )
+            
             option_params.append({
                 'quantity': pos.quantity,
                 'strike': pos.contract.strike_price,
                 'option_type': pos.contract.option_type,
                 'dividend_yield': pos.contract.dividend_yield,
                 'entry_price': pos.entry_price,
-                'implied_volatility': pos.contract.implied_volatility  # Use each option's specific IV
+                'implied_volatility': calculated_iv  # Use calculated IV instead
             })
         
         # Process time steps in batches for better performance
@@ -149,7 +203,7 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 K = param['strike']
                 q = param['dividend_yield']
                 quantity = param['quantity']
-                sigma = param['implied_volatility']  # Use option-specific IV
+                sigma = param['implied_volatility']  # Use calculated IV
                 
                 if param['option_type'] == 'call':
                     # Vectorized Black-Scholes for calls
