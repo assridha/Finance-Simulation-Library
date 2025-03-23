@@ -91,28 +91,12 @@ def print_strategy_greeks(positions):
 def get_historical_volatility(symbol, days=30):
     """Calculate historical volatility for the specified number of days."""
     try:
-        # Get historical data
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days * 2)  # Get more data than needed for better calculation
+        # Use the MarketDataFetcher's implementation
+        fetcher = MarketDataFetcher()
+        hist_vol = fetcher.get_historical_volatility(symbol)
         
-        import yfinance as yf
-        data = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=False)
-        
-        if len(data) < days:
-            print(f"Warning: Only {len(data)} days of data available for {symbol}")
-        
-        # Calculate daily returns - use Close instead of Adj Close to avoid potential errors
-        if 'Close' in data.columns:
-            data['Return'] = data['Close'].pct_change()
-            
-            # Calculate historical volatility (annualized)
-            hist_vol = data['Return'].dropna().iloc[-days:].std() * np.sqrt(252)
-            
-            print(f"\nHistorical Volatility ({days} days): {hist_vol*100:.2f}%")
-            return hist_vol
-        else:
-            print(f"Error: Price data not available for {symbol}")
-            return None
+        print(f"\nHistorical Volatility ({days} days): {hist_vol*100:.2f}%")
+        return hist_vol
     except Exception as e:
         print(f"Error calculating historical volatility: {str(e)}")
         return None
