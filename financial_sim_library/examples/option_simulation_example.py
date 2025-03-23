@@ -182,7 +182,7 @@ def plot_simulation_results(results, strategy_name, symbol):
     ax1.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
     plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45)
     
-    # Plot strategy P&L
+    # Plot strategy values
     for i in range(num_paths_to_plot):
         ax2.plot(dates, strategy_values[i], alpha=0.1, color='blue')
     
@@ -191,36 +191,38 @@ def plot_simulation_results(results, strategy_name, symbol):
     percentile_5 = np.percentile(strategy_values, 5, axis=0)
     percentile_95 = np.percentile(strategy_values, 95, axis=0)
     
-    ax2.plot(dates, mean_value, 'r-', label='Mean P&L')
+    ax2.plot(dates, mean_value, 'r-', label='Mean Value')
     ax2.plot(dates, percentile_5, 'k--', label='5th Percentile')
     ax2.plot(dates, percentile_95, 'k--', label='95th Percentile')
     
-    # Add zero P&L line
-    ax2.axhline(y=0, color='g', linestyle='--', alpha=0.8, label='Break-even')
+    # Add initial investment line
+    initial_value = strategy_values[0, 0]
+    ax2.axhline(y=initial_value, color='g', linestyle='--', alpha=0.8, 
+                label=f'Initial Value (${initial_value:.2f})')
     
     # Calculate and display some key statistics
     final_values = strategy_values[:, -1]
-    prob_profit = (final_values > 0).sum() / len(final_values) * 100
-    max_profit = np.max(final_values)
-    max_loss = np.min(final_values)
-    exp_profit = np.mean(final_values)
+    prob_profit = (final_values > initial_value).sum() / len(final_values) * 100
+    max_value = np.max(final_values)
+    min_value = np.min(final_values)
+    exp_value = np.mean(final_values)
     
     # Add statistics annotations
     stats_text = (
         f"Probability of Profit: {prob_profit:.1f}%\n"
-        f"Expected P&L: ${exp_profit:.2f}\n"
-        f"Max Profit: ${max_profit:.2f}\n"
-        f"Max Loss: ${max_loss:.2f}\n"
-        f"Risk/Reward: {abs(max_profit/max_loss if max_loss != 0 else float('inf')):.2f}"
+        f"Expected Value: ${exp_value:.2f}\n"
+        f"Max Value: ${max_value:.2f}\n"
+        f"Min Value: ${min_value:.2f}\n"
+        f"Return Ratio: {(max_value-initial_value)/(initial_value-min_value) if (initial_value-min_value) != 0 else float('inf'):.2f}"
     )
     
     ax2.annotate(stats_text, 
                 xy=(0.02, 0.02), xycoords='axes fraction',
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
     
-    ax2.set_title(f'{symbol} - {strategy_name} - Strategy P&L')
+    ax2.set_title(f'{symbol} - {strategy_name} - Strategy Value')
     ax2.set_xlabel('Date')
-    ax2.set_ylabel('Strategy P&L ($)')
+    ax2.set_ylabel('Strategy Value ($)')
     ax2.legend(loc='upper left')
     ax2.grid(True)
     
