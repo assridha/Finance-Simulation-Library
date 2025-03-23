@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved option strategy value calculation to properly handle debits and credits
 - Updated sign convention to follow standard trading notation (debit positive, credit negative)
 - Fixed P&L calculation throughout simulation for long/short positions
+- Corrected the pricing of ITM options in multi-leg strategies (PMCC, Butterfly spreads)
+- Fixed issue with deep ITM options showing negative time value
 - Enhanced option pricing to use individual implied volatilities for each contract
 
 ## [0.1.1] - 2025-03-23
