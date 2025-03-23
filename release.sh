@@ -13,6 +13,11 @@ if [[ -n $(git status --porcelain) ]]; then
     exit 1
 fi
 
+# Sync with GitHub repository
+echo "Syncing with GitHub repository..."
+git fetch origin
+git pull origin main
+
 # Run tests
 echo "Running tests..."
 python -m unittest discover -s financial_sim_library/tests || { echo "Tests failed, aborting release."; exit 1; }
@@ -25,14 +30,44 @@ python setup.py sdist bdist_wheel
 echo "Creating git tag v$VERSION..."
 git tag -a "v$VERSION" -m "Release version $VERSION"
 
-# Ask for confirmation before pushing
-read -p "Push tag v$VERSION to remote repository? (y/n) " -n 1 -r
+# Push changes to GitHub
+read -p "Push commits to GitHub repository? (y/n) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    git push origin main
+    echo "Changes pushed to GitHub successfully."
+else
+    echo "Changes not pushed. You can push them later with: git push origin main"
+fi
+
+# Ask for confirmation before pushing tag
+read -p "Push tag v$VERSION to GitHub repository? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     git push origin "v$VERSION"
     echo "Tag pushed successfully."
 else
     echo "Tag not pushed. You can push it later with: git push origin v$VERSION"
+fi
+
+# Create GitHub release
+read -p "Create GitHub release? (y/n) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Check if GitHub CLI is installed
+    if command -v gh &> /dev/null; then
+        echo "Creating GitHub release using GitHub CLI..."
+        gh release create "v$VERSION" \
+            --title "v$VERSION: Performance Optimization Release" \
+            --notes-file "RELEASE_NOTES_v$VERSION.md"
+        echo "GitHub release created successfully."
+    else
+        echo "GitHub CLI not found. Please install it or create the release manually at:"
+        echo "https://github.com/your-username/financial_sim_library/releases/new"
+    fi
+else
+    echo "GitHub release not created. You can create it manually at:"
+    echo "https://github.com/your-username/financial_sim_library/releases/new"
 fi
 
 # Ask for confirmation before uploading to PyPI
@@ -48,6 +83,5 @@ fi
 
 echo "Release $VERSION completed!"
 echo "Don't forget to:"
-echo "1. Create a GitHub release: https://github.com/your-username/financial_sim_library/releases/new"
-echo "2. Update the documentation website"
-echo "3. Announce the release to users" 
+echo "1. Update the documentation website"
+echo "2. Announce the release to users" 
