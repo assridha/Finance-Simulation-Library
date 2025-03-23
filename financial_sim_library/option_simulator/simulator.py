@@ -120,22 +120,10 @@ class MonteCarloOptionSimulator(OptionSimulator):
     
     def calculate_option_prices(self, 
                               price_paths: np.ndarray, 
-                              time_steps: np.ndarray) -> np.ndarray:
+                              time_steps: np.ndarray) -> dict:
         """Calculate option prices using vectorized Black-Scholes formula."""
         num_paths, num_steps = price_paths.shape
-        option_prices = np.zeros((num_paths, num_steps))
-        
-        # Extract contract parameters
-        option_params = []
-        for pos in self.strategy.positions:
-            option_params.append({
-                'quantity': pos.quantity,
-                'strike': pos.contract.strike_price,
-                'option_type': pos.contract.option_type,
-                'dividend_yield': pos.contract.dividend_yield,
-                'entry_price': pos.entry_price,
-                'implied_volatility': pos.contract.implied_volatility  # Use each option's specific IV
-            })
+        option_prices = {}  # Dictionary to store prices for each option position
         
         # Process time steps in batches for better performance
         for t in range(num_steps):
@@ -145,29 +133,31 @@ class MonteCarloOptionSimulator(OptionSimulator):
             # Process all paths at once (vectorized)
             S = price_paths[:, t].reshape(-1, 1)  # Reshape for broadcasting
             
-            for param in option_params:
-                K = param['strike']
-                q = param['dividend_yield']
-                quantity = param['quantity']
-                sigma = param['implied_volatility']  # Use option-specific IV
+            # Calculate prices for each option position separately
+            for i, pos in enumerate(self.strategy.positions):
+                contract = pos.contract
+                # Create a unique key for each position (including position index to handle same strike/type)
+                position_key = f"pos_{i}"
                 
-                if param['option_type'] == 'call':
+                if position_key not in option_prices:
+                    option_prices[position_key] = np.zeros((num_paths, num_steps))
+                
+                K = contract.strike_price
+                q = contract.dividend_yield
+                sigma = contract.implied_volatility  # Use option-specific IV
+                
+                if contract.option_type == 'call':
                     # Vectorized Black-Scholes for calls
-                    option_values = self._vectorized_black_scholes(
+                    values = self._vectorized_black_scholes(
                         S.flatten(), K, time_to_expiry, r, sigma, q, is_call=True
                     )
                 else:
                     # Vectorized Black-Scholes for puts
-                    option_values = self._vectorized_black_scholes(
+                    values = self._vectorized_black_scholes(
                         S.flatten(), K, time_to_expiry, r, sigma, q, is_call=False
                     )
                 
-                # For long positions: loss = current price - entry price (positive means we paid more)
-                # For short positions: loss = entry price - current price (positive means we received less)
-                if quantity > 0:  # Long position
-                    option_prices[:, t] += 100 * quantity * (option_values - param['entry_price'])
-                else:  # Short position
-                    option_prices[:, t] += 100 * abs(quantity) * (param['entry_price'] - option_values)
+                option_prices[position_key][:, t] = values
         
         return option_prices
     
@@ -193,7 +183,7 @@ class MonteCarloOptionSimulator(OptionSimulator):
     
     def calculate_strategy_values(self, 
                                 price_paths: np.ndarray, 
-                                option_prices: np.ndarray) -> np.ndarray:
+                                option_prices: dict) -> np.ndarray:
         """Calculate the total strategy value along each price path."""
         num_paths, num_steps = price_paths.shape
         strategy_values = np.zeros((num_paths, num_steps))
@@ -217,7 +207,7 @@ class MonteCarloOptionSimulator(OptionSimulator):
         for t in range(1, num_steps):  # Start from t=1 since t=0 is initial value
             for path in range(num_paths):
                 # Start with initial value
-                strategy_values[path, t] = strategy_values[path, 0]
+                strategy_values[path, t] = initial_value
                 
                 # Add stock position P&L
                 for stock_pos in self.strategy.stock_positions:
@@ -225,7 +215,18 @@ class MonteCarloOptionSimulator(OptionSimulator):
                     stock_value = stock_pos.quantity * (price_paths[path, t] - stock_pos.entry_price)
                     strategy_values[path, t] += stock_value
                 
-                # Add option position P&L (already calculated as P&L in calculate_option_prices)
-                strategy_values[path, t] += option_prices[path, t]
+                # Add option position P&L
+                for i, pos in enumerate(self.strategy.positions):
+                    position_key = f"pos_{i}" 
+                    current_value = option_prices[position_key][path, t]
+                    
+                    # For long positions: P&L = (current value - entry price) * quantity * 100
+                    # For short positions: P&L = (entry price - current value) * |quantity| * 100
+                    if pos.quantity > 0:  # Long position
+                        option_pnl = (current_value - pos.entry_price) * pos.quantity * 100
+                    else:  # Short position
+                        option_pnl = (pos.entry_price - current_value) * abs(pos.quantity) * 100
+                    
+                    strategy_values[path, t] += option_pnl
         
         return strategy_values 
