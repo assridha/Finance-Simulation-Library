@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Design specification
 - Version release plan
 
+### Fixed
+- Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs
+- Fixed discrepancies in deep ITM option pricing by eliminating dependency on externally reported implied volatility values
+
 ## [0.1.2] - 2025-03-24
 ### Added
 - Command-line interface for option simulation examples
