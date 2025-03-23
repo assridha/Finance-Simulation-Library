@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from ..option_simulator.data_fetcher import MarketDataFetcher
 from ..option_simulator.strategies import SimpleStrategy
 from ..option_simulator.simulator import MonteCarloOptionSimulator
-from ..option_simulator.base import StockPosition, StrategyPosition, OptionContract
+from ..option_simulator.strategies.base import StockPosition, StrategyPosition, OptionContract
 from ..utils.data_fetcher import find_closest_expiry_date, fetch_option_chain
 import numpy as np
 import pandas as pd

@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 from typing import Dict, Optional
-from .base import OptionSimulator, OptionStrategy, OptionContract
+from .strategies.base import OptionSimulator, OptionStrategy, OptionContract
 from ..stock_simulator.models.gbm import GBMModel
 from datetime import datetime
 from scipy.optimize import minimize_scalar

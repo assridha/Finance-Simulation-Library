@@ -2,7 +2,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import pandas as pd
-from .base import OptionContract
+from .strategies.base import OptionContract
 import numpy as np
 from ..stock_simulator.models.gbm import GBMModel
 from ..utils.financial_calcs import get_risk_free_rate
@@ -121,6 +121,23 @@ class MarketDataFetcher:
         """
         bid = row.get('bid', 0)
         ask = row.get('ask', 0)
+        last_price = row.get('lastPrice', 0)
+        
+        # If bid or ask are zero, estimate them from last price
+        if bid == 0 and last_price > 0:
+            bid = last_price * 0.95  # 5% below last price
+        
+        if ask == 0 and last_price > 0:
+            ask = last_price * 1.05  # 5% above last price
+        
+        # Make sure bid and ask are never zero
+        if bid == 0 and ask > 0:
+            bid = ask * 0.9  # 10% below ask
+        elif ask == 0 and bid > 0:
+            ask = bid * 1.1  # 10% above bid
+        elif bid == 0 and ask == 0 and last_price > 0:
+            bid = last_price * 0.95
+            ask = last_price * 1.05
         
         # Calculate spread
         spread = ask - bid

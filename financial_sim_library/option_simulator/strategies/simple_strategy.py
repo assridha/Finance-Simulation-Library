@@ -1,5 +1,5 @@
 from typing import List
-from ..base import OptionStrategy, OptionContract, StrategyPosition, StockPosition
+from .base import OptionStrategy, OptionContract, StrategyPosition, StockPosition
 
 class SimpleStrategy(OptionStrategy):
     """A simple option strategy that can hold multiple positions."""
@@ -18,11 +18,15 @@ class SimpleStrategy(OptionStrategy):
                     )
                 )
             else:
+                # For long positions, use ask price (what you pay)
+                # For short positions, use bid price (what you receive)
+                entry_price = (pos['contract'].ask + pos['contract'].bid) / 2
+
                 self.positions.append(
                     StrategyPosition(
                         contract=pos['contract'],
                         quantity=pos['quantity'],
-                        entry_price=pos['contract'].premium
+                        entry_price=entry_price
                     )
                 )
     
@@ -59,7 +63,10 @@ class SimpleStrategy(OptionStrategy):
                 # For option positions, include the premium
                 contract = pos.get('contract')
                 if contract:
-                    initial_cost += contract.premium * pos.get('quantity', 0)
+                    # For long positions, use ask price (what you pay)
+                    # For short positions, use bid price (what you receive)
+                    entry_price = (contract.ask + contract.bid) / 2
+                    initial_cost += entry_price * pos.get('quantity', 0)
         
         # P&L is payoff minus initial cost
         return payoff - initial_cost
