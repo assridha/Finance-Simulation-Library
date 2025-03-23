@@ -136,7 +136,7 @@ class MonteCarloOptionSimulator(OptionSimulator):
             # Calculate prices for each option position separately
             for i, pos in enumerate(self.strategy.positions):
                 contract = pos.contract
-                # Create a unique key for each position (including position index to handle same strike/type)
+                # Create a unique key for each position
                 position_key = f"pos_{i}"
                 
                 if position_key not in option_prices:
@@ -157,7 +157,12 @@ class MonteCarloOptionSimulator(OptionSimulator):
                         S.flatten(), K, time_to_expiry, r, sigma, q, is_call=False
                     )
                 
-                option_prices[position_key][:, t] = values
+                # For t=0, make sure we're using the actual premium instead of calculated value
+                # This ensures the initial value is correct, especially for ITM options
+                if t == 0:
+                    option_prices[position_key][:, t] = pos.entry_price
+                else:
+                    option_prices[position_key][:, t] = values
         
         return option_prices
     
@@ -207,26 +212,29 @@ class MonteCarloOptionSimulator(OptionSimulator):
         for t in range(1, num_steps):  # Start from t=1 since t=0 is initial value
             for path in range(num_paths):
                 # Start with initial value
-                strategy_values[path, t] = initial_value
+                current_value = initial_value
                 
                 # Add stock position P&L
                 for stock_pos in self.strategy.stock_positions:
-                    # P&L = Current Value - Initial Value
-                    stock_value = stock_pos.quantity * (price_paths[path, t] - stock_pos.entry_price)
-                    strategy_values[path, t] += stock_value
+                    stock_value = stock_pos.quantity * price_paths[path, t]  # Current stock value
+                    stock_cost = stock_pos.quantity * stock_pos.entry_price   # Initial cost
+                    current_value = current_value + (stock_value - stock_cost)
                 
-                # Add option position P&L
+                # Add option position current values
                 for i, pos in enumerate(self.strategy.positions):
                     position_key = f"pos_{i}" 
-                    current_value = option_prices[position_key][path, t]
+                    current_option_value = option_prices[position_key][path, t]
+                    initial_option_value = pos.entry_price
                     
-                    # For long positions: P&L = (current value - entry price) * quantity * 100
-                    # For short positions: P&L = (entry price - current value) * |quantity| * 100
+                    # For long positions: add (current value - entry price) * quantity * 100
+                    # For short positions: add (entry price - current value) * |quantity| * 100
                     if pos.quantity > 0:  # Long position
-                        option_pnl = (current_value - pos.entry_price) * pos.quantity * 100
+                        option_pnl = (current_option_value - initial_option_value) * pos.quantity * 100
                     else:  # Short position
-                        option_pnl = (pos.entry_price - current_value) * abs(pos.quantity) * 100
+                        option_pnl = (initial_option_value - current_option_value) * abs(pos.quantity) * 100
                     
-                    strategy_values[path, t] += option_pnl
+                    current_value += option_pnl
+                
+                strategy_values[path, t] = current_value
         
         return strategy_values 
