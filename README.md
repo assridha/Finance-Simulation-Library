@@ -2,13 +2,14 @@
 
 A comprehensive Python library for simulating and analyzing financial instruments, including stock prices, options, and portfolios.
 
-## Latest Updates (v0.1.1)
+## Latest Updates (v0.1.2)
 
-🚀 **Major Performance Improvements**
-- **40% faster simulation** through vectorized operations and caching
-- **70% reduction in API calls** with intelligent data caching
-- **Memory optimization** for large Monte Carlo simulations
-- **Improved visualization** with interactive date-based charts
+🚀 **Major Improvements**
+- **Enhanced Option Pricing**: Individual implied volatilities for each contract
+- **Accurate Strategy Values**: Proper handling of debits and credits
+- **Standard Trading Notation**: Debits positive, credits negative
+- **Command-Line Interface**: Run specific strategies via CLI
+- **Improved P&L Tracking**: Accurate calculations for long/short positions
 
 See the [CHANGELOG.md](CHANGELOG.md) for full details.
 
