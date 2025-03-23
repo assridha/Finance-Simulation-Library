@@ -21,13 +21,14 @@ class MonteCarloOptionSimulator(OptionSimulator):
             first_contract = strategy.positions[0].contract
             self.symbol = first_contract.symbol
             self.initial_price = first_contract.underlying_price
-            self.volatility = volatility or first_contract.implied_volatility
+            # Only use provided volatility or first contract IV for stock price simulation
+            self.stock_volatility = volatility or first_contract.implied_volatility
             self.risk_free_rate = risk_free_rate or first_contract.risk_free_rate
             
             # Initialize the stock price model
             self.stock_model = GBMModel(
                 ticker=self.symbol,
-                volatility=self.volatility,
+                volatility=self.stock_volatility,
                 risk_free_rate=self.risk_free_rate
             )
     
@@ -131,14 +132,15 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 'quantity': pos.quantity,
                 'strike': pos.contract.strike_price,
                 'option_type': pos.contract.option_type,
-                'dividend_yield': pos.contract.dividend_yield
+                'dividend_yield': pos.contract.dividend_yield,
+                'entry_price': pos.entry_price,
+                'implied_volatility': pos.contract.implied_volatility  # Use each option's specific IV
             })
         
         # Process time steps in batches for better performance
         for t in range(num_steps):
             time_to_expiry = max(0.0001, time_steps[-1] - time_steps[t])  # Avoid zero time to expiry
             r = self.risk_free_rate
-            sigma = self.volatility
             
             # Process all paths at once (vectorized)
             S = price_paths[:, t].reshape(-1, 1)  # Reshape for broadcasting
@@ -147,6 +149,7 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 K = param['strike']
                 q = param['dividend_yield']
                 quantity = param['quantity']
+                sigma = param['implied_volatility']  # Use option-specific IV
                 
                 if param['option_type'] == 'call':
                     # Vectorized Black-Scholes for calls
@@ -159,7 +162,12 @@ class MonteCarloOptionSimulator(OptionSimulator):
                         S.flatten(), K, time_to_expiry, r, sigma, q, is_call=False
                     )
                 
-                option_prices[:, t] += 100 * quantity * option_values
+                # For long positions: loss = current price - entry price (positive means we paid more)
+                # For short positions: loss = entry price - current price (positive means we received less)
+                if quantity > 0:  # Long position
+                    option_prices[:, t] += 100 * quantity * (option_values - param['entry_price'])
+                else:  # Short position
+                    option_prices[:, t] += 100 * abs(quantity) * (param['entry_price'] - option_values)
         
         return option_prices
     
@@ -190,13 +198,34 @@ class MonteCarloOptionSimulator(OptionSimulator):
         num_paths, num_steps = price_paths.shape
         strategy_values = np.zeros((num_paths, num_steps))
         
-        for t in range(num_steps):
+        # Calculate initial investment/credit
+        initial_value = 0.0
+        
+        # Add stock position initial values (positive for debit/cost)
+        for stock_pos in self.strategy.stock_positions:
+            initial_value += stock_pos.quantity * stock_pos.entry_price  # Positive because buying stock is a debit
+        
+        # Add option position initial values
+        for pos in self.strategy.positions:
+            # For long positions (positive quantity), premium is a debit (positive)
+            # For short positions (negative quantity), premium is a credit (negative)
+            initial_value += pos.quantity * pos.entry_price * 100  # Times 100 for contract size
+        
+        # Set initial value for all paths
+        strategy_values[:, 0] = initial_value
+        
+        for t in range(1, num_steps):  # Start from t=1 since t=0 is initial value
             for path in range(num_paths):
-                # Calculate stock position values
-                for stock_pos in self.strategy.stock_positions:
-                    strategy_values[path, t] += stock_pos.quantity * (price_paths[path, t])
+                # Start with initial value
+                strategy_values[path, t] = strategy_values[path, 0]
                 
-                # Add option position values
+                # Add stock position P&L
+                for stock_pos in self.strategy.stock_positions:
+                    # P&L = Current Value - Initial Value
+                    stock_value = stock_pos.quantity * (price_paths[path, t] - stock_pos.entry_price)
+                    strategy_values[path, t] += stock_value
+                
+                # Add option position P&L (already calculated as P&L in calculate_option_prices)
                 strategy_values[path, t] += option_prices[path, t]
         
         return strategy_values 
