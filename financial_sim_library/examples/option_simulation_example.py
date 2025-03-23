@@ -8,6 +8,8 @@ from ..utils.data_fetcher import find_closest_expiry_date, fetch_option_chain
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
+import argparse
+import sys
 
 def print_option_contract_data(contract):
     """Print detailed information of an option contract."""
@@ -240,8 +242,47 @@ def get_target_expiry_date() -> datetime:
     target_date = current_date + timedelta(days=30)  # At least a month away
     return target_date.replace(year=2025, month=5, day=6)  # Example target date
 
+def get_available_strategies():
+    """Returns a dictionary of available strategy names and their descriptions."""
+    return {
+        'simple_call': 'Simple Buy Call Option',
+        'covered_call': 'Covered Call Strategy',
+        'pmcc': 'Poor Man\'s Covered Call Strategy',
+        'vertical_spread': 'Vertical Spread Strategy',
+        'butterfly': 'Custom Butterfly Spread Strategy',
+        'all': 'Run all available strategies'
+    }
+
+def parse_arguments():
+    """Parse command line arguments."""
+    strategies = get_available_strategies()
+    strategy_keys = list(strategies.keys())
+    
+    parser = argparse.ArgumentParser(description='Option Strategy Simulator')
+    parser.add_argument('-s', '--symbol', type=str, default="AAPL",
+                        help='Stock symbol to simulate (default: AAPL)')
+    parser.add_argument('-n', '--num-paths', type=int, default=1000,
+                        help='Number of paths to simulate (default: 1000)')
+    parser.add_argument('-st', '--strategies', nargs='+', choices=strategy_keys, default=['all'],
+                        help=f'Strategies to simulate. Available options: {", ".join(strategy_keys)}')
+    
+    args = parser.parse_args()
+    
+    # If 'all' is in the strategies list, run all strategies
+    if 'all' in args.strategies:
+        args.strategies = [s for s in strategy_keys if s != 'all']
+    
+    return args
+
 def main():
-    symbol = "AAPL"
+    # Parse command line arguments
+    args = parse_arguments()
+    symbol = args.symbol
+    num_paths = args.num_paths
+    selected_strategies = args.strategies
+    
+    strategy_names = get_available_strategies()
+    
     print(f"\nFetching market data for {symbol}...")
     
     fetcher = MarketDataFetcher()
@@ -266,6 +307,8 @@ def main():
     actual_expiry_str = find_closest_expiry_date(target_expiry_str, available_dates)
     actual_expiry = datetime.strptime(actual_expiry_str, '%Y-%m-%d')
     print(f"Using closest available expiry date: {actual_expiry_str}\n")
+    
+    print(f"Selected strategies: {', '.join(selected_strategy for selected_strategy in selected_strategies)}\n")
     
     # Calculate number of days to expiry
     days_to_expiry = (actual_expiry - datetime.now()).days
@@ -294,155 +337,160 @@ def main():
             )
             
             # Run simulation
-            results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
+            results = simulator.run_simulation(num_paths=num_paths, num_steps=num_steps)
             plot_simulation_results(results, strategy_name, symbol)
             return results
         except Exception as e:
             print(f"Error simulating {strategy_name}: {str(e)}")
             return None
     
+    # Get volatility and risk-free rate once for all simulations
+    volatility = fetcher.get_historical_volatility(symbol)
+    risk_free_rate = fetcher.get_risk_free_rate()
+    
     # Simulate Simple Buy Call Option
-    try:
-        atm_options = fetcher.get_atm_options(symbol, actual_expiry)
-        call_contract = atm_options['call']
-        
-        print("\nOption Contract Details:")
-        print_option_contract_data(call_contract)
-        
-        # Define positions for Simple Buy Call
-        positions = [
-            {'contract': call_contract, 'quantity': 1}
-        ]
-        
-        print("\nStrategy Positions:")
-        print_strategy_positions(positions)
-        
-        # Get volatility and risk-free rate once for all simulations
-        volatility = fetcher.get_historical_volatility(symbol)
-        risk_free_rate = fetcher.get_risk_free_rate()
-        
-        # Simulate
-        simulate_strategy("Simple Buy Call Option", positions, volatility, risk_free_rate)
-    except Exception as e:
-        print(f"Error preparing Simple Buy Call Option: {str(e)}")
+    if 'simple_call' in selected_strategies:
+        try:
+            atm_options = fetcher.get_atm_options(symbol, actual_expiry)
+            call_contract = atm_options['call']
+            
+            print("\nOption Contract Details:")
+            print_option_contract_data(call_contract)
+            
+            # Define positions for Simple Buy Call
+            positions = [
+                {'contract': call_contract, 'quantity': 1}
+            ]
+            
+            print("\nStrategy Positions:")
+            print_strategy_positions(positions)
+            
+            # Simulate
+            simulate_strategy(strategy_names['simple_call'], positions, volatility, risk_free_rate)
+        except Exception as e:
+            print(f"Error preparing Simple Buy Call Option: {str(e)}")
     
     # Simulate Covered Call
-    try:
-        strategy_contracts = fetcher.get_option_strategy_contracts(
-            symbol, 'covered_call', actual_expiry
-        )
-        
-        print("\nOption Contract Details:")
-        print_option_contract_data(strategy_contracts['call'])
-        
-        # Define positions for Covered Call
-        positions = [
-            {'type': 'stock', 'symbol': symbol, 'quantity': 100, 'entry_price': current_price},  # Long 100 shares
-            {'contract': strategy_contracts['call'], 'quantity': -1}  # Short 1 call
-        ]
-        
-        print("\nStrategy Positions:")
-        print_strategy_positions(positions)
-        
-        # Simulate
-        simulate_strategy("Covered Call", positions, volatility, risk_free_rate)
-    except Exception as e:
-        print(f"Error preparing Covered Call: {str(e)}")
+    if 'covered_call' in selected_strategies:
+        try:
+            strategy_contracts = fetcher.get_option_strategy_contracts(
+                symbol, 'covered_call', actual_expiry
+            )
+            
+            print("\nOption Contract Details:")
+            print_option_contract_data(strategy_contracts['call'])
+            
+            # Define positions for Covered Call
+            positions = [
+                {'type': 'stock', 'symbol': symbol, 'quantity': 100, 'entry_price': current_price},  # Long 100 shares
+                {'contract': strategy_contracts['call'], 'quantity': -1}  # Short 1 call
+            ]
+            
+            print("\nStrategy Positions:")
+            print_strategy_positions(positions)
+            
+            # Simulate
+            simulate_strategy(strategy_names['covered_call'], positions, volatility, risk_free_rate)
+        except Exception as e:
+            print(f"Error preparing Covered Call: {str(e)}")
     
     # Simulate Poor Man's Covered Call
-    try:
-        pmcc_data = fetcher.get_option_strategy_contracts(
-            symbol, 'poor_mans_covered_call', actual_expiry
-        )
-        
-        print("\nStrategy: Poor Man's Covered Call")
-        print("\nStock Positions:")
-        print("\nOption Positions:")
-        print("\nLong Option Contract:")
-        print_option_contract_data(pmcc_data['long_call'])
-        print("\nShort Option Contract:")
-        print_option_contract_data(pmcc_data['short_call'])
-        
-        # Define positions for PMCC
-        positions = [
-            {'contract': pmcc_data['long_call'], 'quantity': 1},  # Long deep ITM call
-            {'contract': pmcc_data['short_call'], 'quantity': -1}  # Short OTM call
-        ]
-        
-        # Simulate
-        simulate_strategy("Poor Man's Covered Call", positions, volatility, risk_free_rate)
-    except Exception as e:
-        print(f"Error preparing Poor Man's Covered Call: {str(e)}")
+    if 'pmcc' in selected_strategies:
+        try:
+            pmcc_data = fetcher.get_option_strategy_contracts(
+                symbol, 'poor_mans_covered_call', actual_expiry
+            )
+            
+            print("\nStrategy: Poor Man's Covered Call")
+            print("\nStock Positions:")
+            print("\nOption Positions:")
+            print("\nLong Option Contract:")
+            print_option_contract_data(pmcc_data['long_call'])
+            print("\nShort Option Contract:")
+            print_option_contract_data(pmcc_data['short_call'])
+            
+            # Define positions for PMCC
+            positions = [
+                {'contract': pmcc_data['long_call'], 'quantity': 1},  # Long deep ITM call
+                {'contract': pmcc_data['short_call'], 'quantity': -1}  # Short OTM call
+            ]
+            
+            # Simulate
+            simulate_strategy(strategy_names['pmcc'], positions, volatility, risk_free_rate)
+        except Exception as e:
+            print(f"Error preparing Poor Man's Covered Call: {str(e)}")
     
     # Simulate Vertical Spread
-    try:
-        vertical_data = fetcher.get_option_strategy_contracts(
-            symbol, 'vertical_spread', actual_expiry
-        )
-        
-        print("\nStrategy: Vertical Spread")
-        print("\nStock Positions:")
-        print("\nOption Positions:")
-        print("\nLong Option Contract:")
-        print_option_contract_data(vertical_data['long_call'])
-        print("\nShort Option Contract:")
-        print_option_contract_data(vertical_data['short_call'])
-        
-        # Define positions for vertical spread
-        positions = [
-            {'contract': vertical_data['long_call'], 'quantity': 1},  # Long ATM call
-            {'contract': vertical_data['short_call'], 'quantity': -1}  # Short OTM call
-        ]
-        
-        # Simulate
-        simulate_strategy("Vertical Spread", positions, volatility, risk_free_rate)
-    except Exception as e:
-        print(f"Error preparing Vertical Spread: {str(e)}")
+    if 'vertical_spread' in selected_strategies:
+        try:
+            vertical_data = fetcher.get_option_strategy_contracts(
+                symbol, 'vertical_spread', actual_expiry
+            )
+            
+            print("\nStrategy: Vertical Spread")
+            print("\nStock Positions:")
+            print("\nOption Positions:")
+            print("\nLong Option Contract:")
+            print_option_contract_data(vertical_data['long_call'])
+            print("\nShort Option Contract:")
+            print_option_contract_data(vertical_data['short_call'])
+            
+            # Define positions for vertical spread
+            positions = [
+                {'contract': vertical_data['long_call'], 'quantity': 1},  # Long ATM call
+                {'contract': vertical_data['short_call'], 'quantity': -1}  # Short OTM call
+            ]
+            
+            # Simulate
+            simulate_strategy(strategy_names['vertical_spread'], positions, volatility, risk_free_rate)
+        except Exception as e:
+            print(f"Error preparing Vertical Spread: {str(e)}")
     
     # Simulate Custom Butterfly Spread
-    try:
-        # Get option chain for butterfly spread
-        chain = fetcher.get_option_chain(symbol, actual_expiry)
-        calls = chain[chain['option_type'] == 'call']
-        
-        # Find strikes for butterfly wings
-        atm_strike = calls[calls['strike'] >= current_price].iloc[0]['strike']
-        wing_width = 10  # $10 wide wings
-        
-        lower_strike = atm_strike - wing_width
-        upper_strike = atm_strike + wing_width
-        
-        # Get option contracts for butterfly spread
-        lower_call = calls[calls['strike'] == lower_strike].iloc[0]
-        atm_call = calls[calls['strike'] == atm_strike].iloc[0]
-        upper_call = calls[calls['strike'] == upper_strike].iloc[0]
-        
-        # Create option contracts
-        lower_contract = fetcher.create_option_contract(lower_call, symbol, actual_expiry)
-        atm_contract = fetcher.create_option_contract(atm_call, symbol, actual_expiry)
-        upper_contract = fetcher.create_option_contract(upper_call, symbol, actual_expiry)
-        
-        print("\nStrategy: Custom Butterfly Spread")
-        print("\nStock Positions:")
-        print("\nOption Positions:")
-        print("\nLower Wing Call:")
-        print_option_contract_data(lower_contract)
-        print("\nBody Call:")
-        print_option_contract_data(atm_contract)
-        print("\nUpper Wing Call:")
-        print_option_contract_data(upper_contract)
-        
-        # Define positions for butterfly spread
-        positions = [
-            {'contract': lower_contract, 'quantity': 1},  # Long lower wing
-            {'contract': atm_contract, 'quantity': -2},   # Short body
-            {'contract': upper_contract, 'quantity': 1}   # Long upper wing
-        ]
-        
-        # Simulate
-        simulate_strategy("Custom Butterfly Spread", positions, volatility, risk_free_rate)
-    except Exception as e:
-        print(f"Error preparing Custom Butterfly Spread: {str(e)}")
+    if 'butterfly' in selected_strategies:
+        try:
+            # Get option chain for butterfly spread
+            chain = fetcher.get_option_chain(symbol, actual_expiry)
+            calls = chain[chain['option_type'] == 'call']
+            
+            # Find strikes for butterfly wings
+            atm_strike = calls[calls['strike'] >= current_price].iloc[0]['strike']
+            wing_width = 10  # $10 wide wings
+            
+            lower_strike = atm_strike - wing_width
+            upper_strike = atm_strike + wing_width
+            
+            # Get option contracts for butterfly spread
+            lower_call = calls[calls['strike'] == lower_strike].iloc[0]
+            atm_call = calls[calls['strike'] == atm_strike].iloc[0]
+            upper_call = calls[calls['strike'] == upper_strike].iloc[0]
+            
+            # Create option contracts
+            lower_contract = fetcher.create_option_contract(lower_call, symbol, actual_expiry)
+            atm_contract = fetcher.create_option_contract(atm_call, symbol, actual_expiry)
+            upper_contract = fetcher.create_option_contract(upper_call, symbol, actual_expiry)
+            
+            print("\nStrategy: Custom Butterfly Spread")
+            print("\nStock Positions:")
+            print("\nOption Positions:")
+            print("\nLower Wing Call:")
+            print_option_contract_data(lower_contract)
+            print("\nBody Call:")
+            print_option_contract_data(atm_contract)
+            print("\nUpper Wing Call:")
+            print_option_contract_data(upper_contract)
+            
+            # Define positions for butterfly spread
+            positions = [
+                {'contract': lower_contract, 'quantity': 1},  # Long lower wing
+                {'contract': atm_contract, 'quantity': -2},   # Short body
+                {'contract': upper_contract, 'quantity': 1}   # Long upper wing
+            ]
+            
+            # Simulate
+            simulate_strategy(strategy_names['butterfly'], positions, volatility, risk_free_rate)
+        except Exception as e:
+            print(f"Error preparing Custom Butterfly Spread: {str(e)}")
 
 if __name__ == "__main__":
     main() 

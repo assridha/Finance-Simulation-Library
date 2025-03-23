@@ -139,10 +139,14 @@ The library includes a powerful option strategy simulator with full support for:
 from financial_sim_library.option_simulator.data_fetcher import MarketDataFetcher
 from financial_sim_library.option_simulator.strategies import SimpleStrategy
 from financial_sim_library.option_simulator.simulator import MonteCarloOptionSimulator
+from datetime import datetime, timedelta
 
 # Fetch market data and option contracts
 fetcher = MarketDataFetcher()
 current_price = fetcher.get_stock_price("AAPL")
+# Set expiry date to 30 days from now
+expiry_date = datetime.now() + timedelta(days=30)
+
 
 # Get option contracts for a strategy
 strategy_contracts = fetcher.get_option_strategy_contracts(
@@ -204,6 +208,48 @@ This will run simulations for multiple option strategies and display:
 - Strategy payoff diagrams
 - Profit/loss analysis
 - Probability distributions of outcomes
+
+#### Option Simulator Command-Line Interface
+
+The option simulation example now supports command-line arguments that allow you to run selected strategies. This makes it easier to focus on specific option strategies you're interested in analyzing.
+
+##### Usage
+
+```bash
+python -m financial_sim_library.examples.option_simulation_example [options]
+```
+
+##### Options
+
+- `-s, --symbol SYMBOL`: Stock symbol to simulate (default: AAPL)
+- `-n, --num-paths NUM_PATHS`: Number of simulation paths (default: 1000)
+- `-st, --strategies STRATEGY [STRATEGY ...]`: Strategies to simulate
+
+##### Available Strategies
+
+- `simple_call`: Simple Buy Call Option
+- `covered_call`: Covered Call Strategy
+- `pmcc`: Poor Man's Covered Call Strategy
+- `vertical_spread`: Vertical Spread Strategy
+- `butterfly`: Custom Butterfly Spread Strategy
+- `all`: Run all available strategies (default)
+
+##### Examples
+
+Run all strategies for the default symbol:
+```bash
+python -m financial_sim_library.examples.option_simulation_example
+```
+
+Run only butterfly and vertical spread strategies for TSLA with 2000 paths:
+```bash
+python -m financial_sim_library.examples.option_simulation_example -s TSLA -n 2000 -st butterfly vertical_spread
+```
+
+Run just the simple call option strategy:
+```bash
+python -m financial_sim_library.examples.option_simulation_example -st simple_call
+```
 
 ### Command Line Usage
 
