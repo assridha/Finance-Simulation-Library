@@ -3,35 +3,135 @@ from datetime import datetime, timedelta
 from ..option_simulator.data_fetcher import MarketDataFetcher
 from ..option_simulator.strategies import SimpleStrategy
 from ..option_simulator.simulator import MonteCarloOptionSimulator
-from ..option_simulator.base import StockPosition, StrategyPosition
+from ..option_simulator.base import StockPosition, StrategyPosition, OptionContract
 from ..utils.data_fetcher import find_closest_expiry_date, fetch_option_chain
 import numpy as np
+import pandas as pd
+from scipy.stats import norm
 
 def print_option_contract_data(contract):
-    """Print details of an option contract."""
+    """Print detailed information of an option contract."""
     print("\n Option Contract:")
     print(f"Symbol: {contract.symbol}")
     print(f"Type: {contract.option_type.upper()}")
     print(f"Strike Price: ${contract.strike_price:.2f}")
     print(f"Premium: ${contract.premium:.2f}")
     print(f"Underlying Price: ${contract.underlying_price:.2f}")
+    print(f"Implied Volatility: {contract.implied_volatility*100:.2f}%")
+    print(f"Time to Expiry: {contract.time_to_expiry*365:.1f} days")
+    print(f"Risk-Free Rate: {contract.risk_free_rate*100:.2f}%")
     print(f"Expiration: {contract.expiration_date.strftime('%Y-%m-%d')}")
+
+def calculate_option_greeks(contract):
+    """Calculate option Greeks for a given contract."""
+    S = contract.underlying_price
+    K = contract.strike_price
+    T = contract.time_to_expiry
+    r = contract.risk_free_rate
+    sigma = contract.implied_volatility
+    q = contract.dividend_yield
+    
+    # Black-Scholes d1 and d2
+    d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    
+    # Call or put selection
+    if contract.option_type.lower() == 'call':
+        delta = np.exp(-q * T) * norm.cdf(d1)
+        theta = -((S * sigma * np.exp(-q * T)) / (2 * np.sqrt(T))) * norm.pdf(d1) - \
+                r * K * np.exp(-r * T) * norm.cdf(d2) + q * S * np.exp(-q * T) * norm.cdf(d1)
+        price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    else:  # Put
+        delta = -np.exp(-q * T) * norm.cdf(-d1)
+        theta = -((S * sigma * np.exp(-q * T)) / (2 * np.sqrt(T))) * norm.pdf(d1) + \
+                r * K * np.exp(-r * T) * norm.cdf(-d2) - q * S * np.exp(-q * T) * norm.cdf(-d1)
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
+    
+    # Common Greeks for both call and put
+    gamma = (np.exp(-q * T) * norm.pdf(d1)) / (S * sigma * np.sqrt(T))
+    vega = S * np.exp(-q * T) * np.sqrt(T) * norm.pdf(d1) / 100  # Divided by 100 to get sensitivity per 1%
+    
+    return {
+        'delta': delta,
+        'gamma': gamma,
+        'theta': theta / 365,  # Daily theta
+        'vega': vega,
+    }
+
+def print_strategy_greeks(positions):
+    """Calculate and print total Greeks for a strategy."""
+    total_greeks = {'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0}
+    
+    # Calculate Greeks for each option position
+    for pos in positions:
+        if pos.get('type') != 'stock' and 'contract' in pos:
+            contract = pos['contract']
+            quantity = pos['quantity']
+            greeks = calculate_option_greeks(contract)
+            
+            # Add weighted Greeks to the totals
+            for greek, value in greeks.items():
+                total_greeks[greek] += value * quantity
+        
+        # Add delta for stock positions (delta=1)
+        elif pos.get('type') == 'stock':
+            total_greeks['delta'] += pos['quantity']
+    
+    # Print total strategy Greeks
+    print("\nTotal Strategy Greeks:")
+    print(f"Delta: {total_greeks['delta']:.2f}")
+    print(f"Gamma: {total_greeks['gamma']:.5f}")
+    print(f"Theta: ${total_greeks['theta']:.2f} per day")
+    print(f"Vega: ${total_greeks['vega']:.2f} per 1% change in IV")
+    
+    return total_greeks
+
+def get_historical_volatility(symbol, days=30):
+    """Calculate historical volatility for the specified number of days."""
+    try:
+        # Get historical data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days * 2)  # Get more data than needed for better calculation
+        
+        import yfinance as yf
+        data = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=False)
+        
+        if len(data) < days:
+            print(f"Warning: Only {len(data)} days of data available for {symbol}")
+        
+        # Calculate daily returns - use Close instead of Adj Close to avoid potential errors
+        if 'Close' in data.columns:
+            data['Return'] = data['Close'].pct_change()
+            
+            # Calculate historical volatility (annualized)
+            hist_vol = data['Return'].dropna().iloc[-days:].std() * np.sqrt(252)
+            
+            print(f"\nHistorical Volatility ({days} days): {hist_vol*100:.2f}%")
+            return hist_vol
+        else:
+            print(f"Error: Price data not available for {symbol}")
+            return None
+    except Exception as e:
+        print(f"Error calculating historical volatility: {str(e)}")
+        return None
 
 def print_strategy_positions(positions):
     """Print details of strategy positions."""
     print("\nStock Positions:")
     for pos in positions:
         if pos.get('type') == 'stock':
+            print(f"Symbol: {pos.get('symbol', 'UNKNOWN')}")
             print(f"Quantity: {pos['quantity']} shares")
+            print(f"Entry Price: ${pos.get('entry_price', 0):.2f}")
     
     print("\nOption Positions:")
     for pos in positions:
-        if pos.get('type') != 'stock':
+        if pos.get('type') != 'stock' and 'contract' in pos:
             print(f"\nQuantity: {pos['quantity']}")
             print_option_contract_data(pos['contract'])
 
-def plot_simulation_results(results, strategy_name):
-    """Plot simulation results."""
+def plot_simulation_results(results, strategy_name, symbol):
+    """Plot simulation results including ticker symbol in titles."""
     if results is None:
         return
     
@@ -60,10 +160,22 @@ def plot_simulation_results(results, strategy_name):
     ax1.plot(dates, percentile_5_price, 'k--', label='5th Percentile')
     ax1.plot(dates, percentile_95_price, 'k--', label='95th Percentile')
     
-    ax1.set_title(f'{strategy_name} - Stock Price Simulation')
+    # Add current price marker
+    current_price = price_paths[0, 0]
+    ax1.axhline(y=current_price, color='g', linestyle='--', alpha=0.8, label=f'Current Price (${current_price:.2f})')
+    
+    # Add expected move (±1 std) annotation
+    last_date = dates[-1]
+    std_dev = np.std(price_paths[:, -1])
+    exp_move_pct = (std_dev / current_price) * 100
+    ax1.annotate(f'Expected Move at Expiry: ±{exp_move_pct:.1f}%', 
+                xy=(0.98, 0.05), xycoords='axes fraction', horizontalalignment='right',
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
+    
+    ax1.set_title(f'{symbol} - {strategy_name} - Stock Price Simulation')
     ax1.set_xlabel('Date')
     ax1.set_ylabel('Stock Price ($)')
-    ax1.legend()
+    ax1.legend(loc='upper left')
     ax1.grid(True)
     
     # Format x-axis dates
@@ -83,10 +195,33 @@ def plot_simulation_results(results, strategy_name):
     ax2.plot(dates, percentile_5, 'k--', label='5th Percentile')
     ax2.plot(dates, percentile_95, 'k--', label='95th Percentile')
     
-    ax2.set_title(f'{strategy_name} - Strategy P&L')
+    # Add zero P&L line
+    ax2.axhline(y=0, color='g', linestyle='--', alpha=0.8, label='Break-even')
+    
+    # Calculate and display some key statistics
+    final_values = strategy_values[:, -1]
+    prob_profit = (final_values > 0).sum() / len(final_values) * 100
+    max_profit = np.max(final_values)
+    max_loss = np.min(final_values)
+    exp_profit = np.mean(final_values)
+    
+    # Add statistics annotations
+    stats_text = (
+        f"Probability of Profit: {prob_profit:.1f}%\n"
+        f"Expected P&L: ${exp_profit:.2f}\n"
+        f"Max Profit: ${max_profit:.2f}\n"
+        f"Max Loss: ${max_loss:.2f}\n"
+        f"Risk/Reward: {abs(max_profit/max_loss if max_loss != 0 else float('inf')):.2f}"
+    )
+    
+    ax2.annotate(stats_text, 
+                xy=(0.02, 0.02), xycoords='axes fraction',
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
+    
+    ax2.set_title(f'{symbol} - {strategy_name} - Strategy P&L')
     ax2.set_xlabel('Date')
     ax2.set_ylabel('Strategy P&L ($)')
-    ax2.legend()
+    ax2.legend(loc='upper left')
     ax2.grid(True)
     
     # Format x-axis dates
@@ -110,6 +245,9 @@ def main():
     fetcher = MarketDataFetcher()
     current_price = fetcher.get_stock_price(symbol)
     print(f"Current price: ${current_price:.2f}\n")
+    
+    # Get historical volatility for the last 30 days
+    historical_vol = get_historical_volatility(symbol, days=30)
     
     # Get target expiry date
     target_expiry = get_target_expiry_date()
@@ -136,6 +274,9 @@ def main():
         """Run a Monte Carlo simulation for the given strategy."""
         print(f"\nSimulating {strategy_name} strategy...")
         try:
+            # Print strategy Greeks
+            print_strategy_greeks(positions)
+            
             # Create strategy and simulator
             strategy = SimpleStrategy(strategy_name, positions)
             
@@ -152,7 +293,7 @@ def main():
             
             # Run simulation
             results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
-            plot_simulation_results(results, strategy_name)
+            plot_simulation_results(results, strategy_name, symbol)
             return results
         except Exception as e:
             print(f"Error simulating {strategy_name}: {str(e)}")
