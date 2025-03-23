@@ -57,11 +57,12 @@ def calculate_option_greeks(contract):
     gamma = (np.exp(-q * T) * norm.pdf(d1)) / (S * sigma * np.sqrt(T))
     vega = S * np.exp(-q * T) * np.sqrt(T) * norm.pdf(d1) / 100  # Divided by 100 to get sensitivity per 1%
     
+    # Each contract controls 100 shares
     return {
-        'delta': delta,
-        'gamma': gamma,
-        'theta': theta / 365,  # Daily theta
-        'vega': vega,
+        'delta': delta * 100,  # Delta per contract
+        'gamma': gamma * 100,  # Gamma per contract
+        'theta': (theta / 365) * 100,  # Daily theta per contract
+        'vega': vega * 100,  # Vega per contract
     }
 
 def print_strategy_greeks(positions):
