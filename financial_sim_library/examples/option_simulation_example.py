@@ -351,7 +351,6 @@ def main():
     actual_expiry_str = find_closest_expiry_date(target_expiry_str, available_dates)
     actual_expiry = datetime.strptime(actual_expiry_str, '%Y-%m-%d')
     print(f"Using closest available expiry date: {actual_expiry_str}\n")
-    
     print(f"Selected strategies: {', '.join(selected_strategy for selected_strategy in selected_strategies)}\n")
     
     # Calculate number of days to expiry
@@ -379,8 +378,9 @@ def main():
             simulator = MonteCarloOptionSimulator(
                 strategy=strategy,
                 price_model='gbm',
-                volatility=vol,
-                risk_free_rate=rate
+                volatility=0.7*vol,
+                risk_free_rate=rate,
+                growth_rate=1.3
             )
             
             # Run simulation

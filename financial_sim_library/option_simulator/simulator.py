@@ -3,6 +3,7 @@ from scipy.stats import norm
 from typing import Dict, Optional
 from .strategies.base import OptionSimulator, OptionStrategy, OptionContract
 from ..stock_simulator.models.gbm import GBMModel
+from ..stock_simulator.models.growth_models import FixedGrowthModel
 from datetime import datetime
 from scipy.optimize import minimize_scalar
 
@@ -13,7 +14,8 @@ class MonteCarloOptionSimulator(OptionSimulator):
                  strategy: OptionStrategy,
                  price_model: str = 'gbm',
                  volatility: Optional[float] = None,
-                 risk_free_rate: Optional[float] = None):
+                 risk_free_rate: Optional[float] = None,
+                 growth_rate: Optional[float] = 0.0):
         super().__init__(strategy)
         self.price_model = price_model
         
@@ -38,7 +40,8 @@ class MonteCarloOptionSimulator(OptionSimulator):
             self.stock_model = GBMModel(
                 ticker=self.symbol,
                 volatility=self.stock_volatility,
-                risk_free_rate=self.risk_free_rate
+                risk_free_rate=self.risk_free_rate,
+                growth_model=FixedGrowthModel(growth_rate=growth_rate)
             )
     
     def _calculate_implied_volatility(self, market_price, S, K, T, r, option_type='call', q=0):
