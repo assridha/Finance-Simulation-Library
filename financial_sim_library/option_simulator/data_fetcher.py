@@ -4,8 +4,6 @@ from typing import Dict, List, Optional
 import pandas as pd
 from .base import OptionContract
 import numpy as np
-from scipy.stats import norm
-from scipy.optimize import minimize_scalar
 from ..stock_simulator.models.gbm import GBMModel
 from ..utils.financial_calcs import get_risk_free_rate
 from ..utils.data_fetcher import (
@@ -92,64 +90,6 @@ class MarketDataFetcher:
         
         return chain
     
-    def calculate_black_scholes(self, S, K, T, r, sigma, option_type='call', q=0):
-        """Calculate Black-Scholes price for an option."""
-        d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        
-        if option_type.lower() == 'call':
-            price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-        else:  # put
-            price = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
-        
-        return price
-    
-    def calculate_implied_volatility(self, market_price, S, K, T, r, option_type='call', q=0):
-        """Calculate implied volatility using Black-Scholes and market price."""
-        # Define the objective function to minimize
-        def objective(sigma):
-            bs_price = self.calculate_black_scholes(S, K, T, r, sigma, option_type, q)
-            return (bs_price - market_price) ** 2
-        
-        # Use a bounded optimization to find implied volatility
-        result = minimize_scalar(objective, bounds=(0.001, 5.0), method='bounded')
-        
-        if result.success:
-            return result.x
-        else:
-            return 0.3  # Return a reasonable default if calculation fails
-    
-    def fix_option_contract_iv(self, row, symbol, expiration_date, time_to_expiry):
-        """Fix implied volatility for options based on market price."""
-        # Extract relevant parameters
-        S = row['underlyingPrice']
-        K = row['strike']
-        market_price = row['lastPrice']
-        reported_iv = row['impliedVolatility']
-        option_type = row['option_type']
-        r = self.get_risk_free_rate()
-        
-        # Determine if this is a deep ITM option (more than 20% ITM)
-        is_deep_itm = False
-        if option_type == 'call' and S > K * 1.2:  # Deep ITM call
-            is_deep_itm = True
-        elif option_type == 'put' and S < K * 0.8:  # Deep ITM put
-            is_deep_itm = True
-        
-        # Check if IV seems unrealistic (above 100%)
-        is_unrealistic_iv = reported_iv > 1.0
-        
-        # Only recalculate for deep ITM options or unrealistic IV values
-        if is_deep_itm or is_unrealistic_iv:
-            # Calculate IV based on market price
-            calculated_iv = self.calculate_implied_volatility(
-                market_price, S, K, time_to_expiry, r, option_type
-            )
-            return calculated_iv
-        
-        # For other options, use the reported IV
-        return reported_iv
-    
     def get_risk_free_rate(self) -> float:
         """Get current risk-free rate."""
         if self.risk_free_rate_value is None:
@@ -174,12 +114,6 @@ class MarketDataFetcher:
                              symbol: str, 
                              expiration_date: datetime) -> OptionContract:
         """Create an OptionContract from a row of option chain data."""
-        # Calculate time to expiry
-        time_to_expiry = (expiration_date - datetime.now()).days / 365.0
-        
-        # Fix implied volatility if necessary
-        corrected_iv = self.fix_option_contract_iv(row, symbol, expiration_date, time_to_expiry)
-        
         return OptionContract(
             symbol=symbol,
             strike_price=row['strike'],
@@ -187,8 +121,8 @@ class MarketDataFetcher:
             option_type=row['option_type'],
             premium=row['lastPrice'],
             underlying_price=row['underlyingPrice'],
-            implied_volatility=corrected_iv,  # Use the corrected IV
-            time_to_expiry=time_to_expiry,
+            implied_volatility=row['impliedVolatility'],
+            time_to_expiry=(expiration_date - datetime.now()).days / 365.0,
             risk_free_rate=self.get_risk_free_rate()
         )
     

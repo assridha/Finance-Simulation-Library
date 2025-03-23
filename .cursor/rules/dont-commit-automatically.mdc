@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+Always ask user before commiting anything. Let the user run his/her own tests first. 
