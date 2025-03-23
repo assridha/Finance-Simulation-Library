@@ -17,11 +17,20 @@ class MarketDataFetcher:
     """Fetcher for live market data using yfinance."""
     
     def __init__(self):
-        self.cache: Dict[str, pd.DataFrame] = {}
+        self.cache = {}
+        self.option_chain_cache = {}
+        self.stock_price_cache = {}
+        self.volatility_cache = {}
+        self.risk_free_rate_value = None
     
     def get_stock_price(self, symbol: str) -> float:
         """Get current stock price."""
-        return fetch_current_price(symbol)
+        if symbol in self.stock_price_cache:
+            return self.stock_price_cache[symbol]
+        
+        price = fetch_current_price(symbol)
+        self.stock_price_cache[symbol] = price
+        return price
     
     def get_option_chain(self, 
                         symbol: str, 
@@ -29,6 +38,11 @@ class MarketDataFetcher:
         """Get option chain for a symbol."""
         # Convert datetime to string format if provided
         exp_date_str = expiration_date.strftime('%Y-%m-%d') if expiration_date else None
+        
+        # Check cache first
+        cache_key = f"{symbol}_{exp_date_str}"
+        if cache_key in self.option_chain_cache:
+            return self.option_chain_cache[cache_key]
         
         # Get option chain using utility function
         chain_data = fetch_option_chain(symbol)
@@ -71,18 +85,28 @@ class MarketDataFetcher:
         chain = pd.concat([calls, puts])
         chain = chain.sort_values('strike')
         
+        # Cache the result
+        self.option_chain_cache[cache_key] = chain
+        
         return chain
     
     def get_risk_free_rate(self) -> float:
         """Get current risk-free rate."""
-        return get_risk_free_rate()
+        if self.risk_free_rate_value is None:
+            self.risk_free_rate_value = get_risk_free_rate()
+        return self.risk_free_rate_value
     
     def get_historical_volatility(self, 
                                 symbol: str, 
                                 period: str = '1y') -> float:
         """Calculate historical volatility using the stock simulator."""
+        cache_key = f"{symbol}_{period}"
+        if cache_key in self.volatility_cache:
+            return self.volatility_cache[cache_key]
+            
         model = GBMModel(ticker=symbol)
         model.calibrate()
+        self.volatility_cache[cache_key] = model.volatility
         return model.volatility
     
     def create_option_contract(self, 

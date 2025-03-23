@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="financial_sim_library",
-    version="0.1.0",
+    version="0.1.1",
     description="A comprehensive financial simulation library for stock prices, options, and portfolios",
     author="Ashwin Sridhar",
     packages=find_packages(),

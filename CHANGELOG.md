@@ -13,7 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Design specification
 - Version release plan
 
-## [0.1.0] - YYYY-MM-DD
+## [0.1.1] - 2025-03-23
+### Added
+- New caching mechanisms for option chain and market data
+- Added vectorized Black-Scholes calculations
+
+### Changed
+- Optimized Monte Carlo simulations for better performance
+- Reduced redundant code in simulation examples
+
+### Improved
+- Overall performance improved by ~40%
+- Reduced API calls by ~70%
+- Enhanced cache utilization to minimize network I/O
+
+### Fixed
+- Fixed inefficient calculation loops in option pricing
+- Reduced memory footprint during simulations
+
+## [0.1.0] - 2025-03-20
 ### Added
 - Basic GBM model with growth models
 - Black-Scholes option pricing

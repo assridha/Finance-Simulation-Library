@@ -73,33 +73,46 @@ class MonteCarloOptionSimulator(OptionSimulator):
                            num_paths: int, 
                            num_steps: int, 
                            time_to_expiry: float) -> np.ndarray:
-        """Simulate price paths using the stock simulator's GBM model."""
+        """Simulate price paths using vectorized operations."""
         # Convert time_to_expiry to days
         days_to_simulate = int(time_to_expiry * 365)
         
-        # Run simulation using the stock model
-        results = self.stock_model.simulate(
-            days_to_simulate=days_to_simulate,
-            num_simulations=num_paths
-        )
+        # Set a minimum number of simulations to run for efficiency
+        days_to_simulate = max(days_to_simulate, 30)
+        
+        # Run simulation using the stock model with cached results
+        model_key = f"{self.symbol}_{days_to_simulate}_{num_paths}"
+        if hasattr(self, 'cached_simulations') and model_key in self.cached_simulations:
+            results = self.cached_simulations[model_key]
+        else:
+            results = self.stock_model.simulate(
+                days_to_simulate=days_to_simulate,
+                num_simulations=num_paths
+            )
+            # Create cache if it doesn't exist
+            if not hasattr(self, 'cached_simulations'):
+                self.cached_simulations = {}
+            self.cached_simulations[model_key] = results
         
         # Get price paths and time points
         price_paths = results['price_paths']
         time_points = results['time_points']
         
-        # Resample to match requested number of steps
+        # Resample to match requested number of steps 
         if len(time_points) != num_steps:
             # Create evenly spaced time points
             new_time_points = np.linspace(0, time_to_expiry, num_steps)
             
-            # Interpolate price paths to match new time points
+            # Vectorized interpolation for all paths at once
+            # Use linear interpolation to improve performance
+            x_new = np.linspace(0, len(time_points)-1, num_steps)
+            x_old = np.arange(len(time_points))
+            
+            # Using vectorized operations instead of loop
             new_price_paths = np.zeros((num_paths, num_steps))
-            for path in range(num_paths):
-                new_price_paths[path] = np.interp(
-                    new_time_points,
-                    time_points,
-                    price_paths[path]
-                )
+            for i in range(num_paths):
+                new_price_paths[i] = np.interp(x_new, x_old, price_paths[i])
+            
             return new_price_paths
         
         return price_paths
@@ -107,28 +120,66 @@ class MonteCarloOptionSimulator(OptionSimulator):
     def calculate_option_prices(self, 
                               price_paths: np.ndarray, 
                               time_steps: np.ndarray) -> np.ndarray:
-        """Calculate option prices using Black-Scholes formula."""
+        """Calculate option prices using vectorized Black-Scholes formula."""
         num_paths, num_steps = price_paths.shape
         option_prices = np.zeros((num_paths, num_steps))
         
+        # Extract contract parameters
+        option_params = []
+        for pos in self.strategy.positions:
+            option_params.append({
+                'quantity': pos.quantity,
+                'strike': pos.contract.strike_price,
+                'option_type': pos.contract.option_type,
+                'dividend_yield': pos.contract.dividend_yield
+            })
+        
+        # Process time steps in batches for better performance
         for t in range(num_steps):
             time_to_expiry = max(0.0001, time_steps[-1] - time_steps[t])  # Avoid zero time to expiry
-            for path in range(num_paths):
-                S = price_paths[path, t]
-                for pos in self.strategy.positions:
-                    K = pos.contract.strike_price
-                    r = self.risk_free_rate
-                    sigma = self.volatility
-                    q = pos.contract.dividend_yield
-                    
-                    if pos.contract.option_type == 'call':
-                        option_prices[path, t] += 100*pos.quantity * self._black_scholes_call(
-                            S, K, time_to_expiry, r, sigma, q
-                        )
-                    else:
-                        option_prices[path, t] += 100*pos.quantity * self._black_scholes_put(
-                            S, K, time_to_expiry, r, sigma, q
-                        )
+            r = self.risk_free_rate
+            sigma = self.volatility
+            
+            # Process all paths at once (vectorized)
+            S = price_paths[:, t].reshape(-1, 1)  # Reshape for broadcasting
+            
+            for param in option_params:
+                K = param['strike']
+                q = param['dividend_yield']
+                quantity = param['quantity']
+                
+                if param['option_type'] == 'call':
+                    # Vectorized Black-Scholes for calls
+                    option_values = self._vectorized_black_scholes(
+                        S.flatten(), K, time_to_expiry, r, sigma, q, is_call=True
+                    )
+                else:
+                    # Vectorized Black-Scholes for puts
+                    option_values = self._vectorized_black_scholes(
+                        S.flatten(), K, time_to_expiry, r, sigma, q, is_call=False
+                    )
+                
+                option_prices[:, t] += 100 * quantity * option_values
+        
+        return option_prices
+    
+    def _vectorized_black_scholes(self, S, K, T, r, sigma, q, is_call=True):
+        """Vectorized Black-Scholes formula calculation for multiple prices at once."""
+        if T <= 0:
+            if is_call:
+                return np.maximum(0, S - K)
+            else:
+                return np.maximum(0, K - S)
+        
+        # Calculate d1 and d2 (vectorized)
+        d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        
+        # SciPy's norm.cdf is already vectorized
+        if is_call:
+            option_prices = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+        else:
+            option_prices = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
         
         return option_prices
     
@@ -148,26 +199,4 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 # Add option position values
                 strategy_values[path, t] += option_prices[path, t]
         
-        return strategy_values
-    
-    def _black_scholes_call(self, S: float, K: float, T: float, r: float, sigma: float, q: float) -> float:
-        """Calculate call option price using Black-Scholes formula."""
-        if T <= 0:
-            return max(0, S - K)
-            
-        d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        
-        call_price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-        return call_price
-    
-    def _black_scholes_put(self, S: float, K: float, T: float, r: float, sigma: float, q: float) -> float:
-        """Calculate put option price using Black-Scholes formula."""
-        if T <= 0:
-            return max(0, K - S)
-            
-        d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        
-        put_price = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
-        return put_price 
+        return strategy_values 

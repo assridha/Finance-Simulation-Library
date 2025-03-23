@@ -131,8 +131,34 @@ def main():
     days_to_expiry = (actual_expiry - datetime.now()).days
     num_steps = min(252, days_to_expiry)  # Use fewer steps if expiry is closer
     
+    # Reusable simulation function to reduce code duplication
+    def simulate_strategy(strategy_name, positions, volatility=None, risk_free_rate=None):
+        """Run a Monte Carlo simulation for the given strategy."""
+        print(f"\nSimulating {strategy_name} strategy...")
+        try:
+            # Create strategy and simulator
+            strategy = SimpleStrategy(strategy_name, positions)
+            
+            # Use cached values if available
+            vol = volatility or fetcher.get_historical_volatility(symbol)
+            rate = risk_free_rate or fetcher.get_risk_free_rate()
+            
+            simulator = MonteCarloOptionSimulator(
+                strategy=strategy,
+                price_model='gbm',
+                volatility=vol,
+                risk_free_rate=rate
+            )
+            
+            # Run simulation
+            results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
+            plot_simulation_results(results, strategy_name)
+            return results
+        except Exception as e:
+            print(f"Error simulating {strategy_name}: {str(e)}")
+            return None
+    
     # Simulate Simple Buy Call Option
-    print("Simulating Simple Buy Call Option strategy...")
     try:
         atm_options = fetcher.get_atm_options(symbol, actual_expiry)
         call_contract = atm_options['call']
@@ -148,23 +174,16 @@ def main():
         print("\nStrategy Positions:")
         print_strategy_positions(positions)
         
-        # Create strategy and simulator
-        strategy = SimpleStrategy("Simple Buy Call", positions)
-        simulator = MonteCarloOptionSimulator(
-            strategy=strategy,
-            price_model='gbm',
-            volatility=fetcher.get_historical_volatility(symbol),
-            risk_free_rate=fetcher.get_risk_free_rate()
-        )
+        # Get volatility and risk-free rate once for all simulations
+        volatility = fetcher.get_historical_volatility(symbol)
+        risk_free_rate = fetcher.get_risk_free_rate()
         
-        # Run simulation
-        results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
-        plot_simulation_results(results, "Simple Buy Call Option")
+        # Simulate
+        simulate_strategy("Simple Buy Call Option", positions, volatility, risk_free_rate)
     except Exception as e:
-        print(f"Error simulating Simple Buy Call Option: {str(e)}")
+        print(f"Error preparing Simple Buy Call Option: {str(e)}")
     
     # Simulate Covered Call
-    print("\nSimulating Covered Call strategy...")
     try:
         strategy_contracts = fetcher.get_option_strategy_contracts(
             symbol, 'covered_call', actual_expiry
@@ -182,23 +201,12 @@ def main():
         print("\nStrategy Positions:")
         print_strategy_positions(positions)
         
-        # Create strategy and simulator
-        strategy = SimpleStrategy("Covered Call", positions)
-        simulator = MonteCarloOptionSimulator(
-            strategy=strategy,
-            price_model='gbm',
-            volatility=fetcher.get_historical_volatility(symbol),
-            risk_free_rate=fetcher.get_risk_free_rate()
-        )
-        
-        # Run simulation
-        results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
-        plot_simulation_results(results, "Covered Call")
+        # Simulate
+        simulate_strategy("Covered Call", positions, volatility, risk_free_rate)
     except Exception as e:
-        print(f"Error simulating Covered Call: {str(e)}")
+        print(f"Error preparing Covered Call: {str(e)}")
     
     # Simulate Poor Man's Covered Call
-    print("\nSimulating Poor Man's Covered Call strategy...")
     try:
         pmcc_data = fetcher.get_option_strategy_contracts(
             symbol, 'poor_mans_covered_call', actual_expiry
@@ -218,23 +226,12 @@ def main():
             {'contract': pmcc_data['short_call'], 'quantity': -1}  # Short OTM call
         ]
         
-        # Create strategy and simulator
-        strategy = SimpleStrategy("Poor Man's Covered Call", positions)
-        simulator = MonteCarloOptionSimulator(
-            strategy=strategy,
-            price_model='gbm',
-            volatility=fetcher.get_historical_volatility(symbol),
-            risk_free_rate=fetcher.get_risk_free_rate()
-        )
-        
-        # Run simulation
-        results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
-        plot_simulation_results(results, "Poor Man's Covered Call")
+        # Simulate
+        simulate_strategy("Poor Man's Covered Call", positions, volatility, risk_free_rate)
     except Exception as e:
-        print(f"Error simulating Poor Man's Covered Call: {str(e)}")
+        print(f"Error preparing Poor Man's Covered Call: {str(e)}")
     
     # Simulate Vertical Spread
-    print("\nSimulating Vertical Spread strategy...")
     try:
         vertical_data = fetcher.get_option_strategy_contracts(
             symbol, 'vertical_spread', actual_expiry
@@ -254,23 +251,12 @@ def main():
             {'contract': vertical_data['short_call'], 'quantity': -1}  # Short OTM call
         ]
         
-        # Create strategy and simulator
-        strategy = SimpleStrategy("Vertical Spread", positions)
-        simulator = MonteCarloOptionSimulator(
-            strategy=strategy,
-            price_model='gbm',
-            volatility=fetcher.get_historical_volatility(symbol),
-            risk_free_rate=fetcher.get_risk_free_rate()
-        )
-        
-        # Run simulation
-        results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
-        plot_simulation_results(results, "Vertical Spread")
+        # Simulate
+        simulate_strategy("Vertical Spread", positions, volatility, risk_free_rate)
     except Exception as e:
-        print(f"Error simulating Vertical Spread: {str(e)}")
+        print(f"Error preparing Vertical Spread: {str(e)}")
     
     # Simulate Custom Butterfly Spread
-    print("\nSimulating Custom Butterfly Spread strategy...")
     try:
         # Get option chain for butterfly spread
         chain = fetcher.get_option_chain(symbol, actual_expiry)
@@ -310,20 +296,10 @@ def main():
             {'contract': upper_contract, 'quantity': 1}   # Long upper wing
         ]
         
-        # Create strategy and simulator
-        strategy = SimpleStrategy("Custom Butterfly Spread", positions)
-        simulator = MonteCarloOptionSimulator(
-            strategy=strategy,
-            price_model='gbm',
-            volatility=fetcher.get_historical_volatility(symbol),
-            risk_free_rate=fetcher.get_risk_free_rate()
-        )
-        
-        # Run simulation
-        results = simulator.run_simulation(num_paths=1000, num_steps=num_steps)
-        plot_simulation_results(results, "Custom Butterfly Spread")
+        # Simulate
+        simulate_strategy("Custom Butterfly Spread", positions, volatility, risk_free_rate)
     except Exception as e:
-        print(f"Error simulating Custom Butterfly Spread: {str(e)}")
+        print(f"Error preparing Custom Butterfly Spread: {str(e)}")
 
 if __name__ == "__main__":
     main() 
