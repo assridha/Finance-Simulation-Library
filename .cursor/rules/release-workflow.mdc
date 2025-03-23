@@ -1,5 +1,5 @@
 ---
-description: Perform this when user asks to create a new release
+description: Perform this when user asks to create a new patch or release
 globs: 
 alwaysApply: false
 ---
