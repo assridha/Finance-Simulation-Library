@@ -1,35 +1,40 @@
-# Finance Simulation Library v0.1.2 Release Notes
+# Release Notes - v0.1.2
 
-## New Features
-- **Command-line Interface**: Introduced command-line interface for running option simulations.
-  - Users can now run selected strategies via command-line arguments.
-  - Added support for specifying the number of simulation paths from the command line.
+## Option Strategy Simulation Improvements
 
-## Major Improvements
-- **Enhanced Option Pricing Accuracy**:
-  - Fixed option pricing for in-the-money (ITM) options in multi-leg strategies.
-  - Corrected the handling of deep ITM options showing negative time value in Butterfly and PMCC strategies.
-  - Added position-specific tracking for options with same strike/type in complex strategies.
-  - Now using the actual market entry price at t=0 for consistent valuation and P&L calculations.
+This patch release focuses on improving the accuracy and usability of option strategy simulations.
 
-- **Strategy Value Calculation**:
-  - Improved strategy value calculation to properly handle debits and credits.
-  - Updated P&L calculation to follow standard trading notation (debit positive, credit negative).
-  - Fixed P&L calculation throughout simulations for both long and short positions.
+### New Features
+1. **Command-Line Interface for Option Simulations**
+   - Added support for running selected option strategies via command-line arguments
+   - Flexible symbol selection and simulation path configuration
+   - Easy-to-use interface for testing different strategies
 
-## Usage Example
+### Major Improvements
+1. **Enhanced Option Pricing Accuracy**
+   - Each option contract now uses its own specific implied volatility
+   - Properly accounts for volatility smile/skew effects
+   - More accurate pricing for multi-leg strategies
+
+2. **Fixed Strategy Value Calculations**
+   - Updated sign convention to match standard trading notation
+   - Debits (paying money) are now positive values
+   - Credits (receiving money) are now negative values
+   - Accurate P&L tracking throughout the simulation
+
+### Usage Example
 ```bash
-# Run specific strategy simulations
-python -m financial_sim_library.option_simulator.main --strategy butterfly
+# Run specific strategies for a custom symbol
+python -m financial_sim_library.examples.option_simulation_example -s TSLA -st butterfly vertical_spread
 
-# Increase simulation paths for higher accuracy
-python -m financial_sim_library.option_simulator.main --paths 10000
+# Run all strategies with increased simulation paths
+python -m financial_sim_library.examples.option_simulation_example -n 2000
 ```
 
-## Breaking Changes
-None - This release maintains backward compatibility with existing code.
+### Breaking Changes
+None. This is a backward-compatible improvement to existing functionality.
 
-## Installation
+### Installation
 ```bash
-pip install finance-simulation-library==0.1.2
+pip install financial_sim_library==0.1.2
 ``` 
