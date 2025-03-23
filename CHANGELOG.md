@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Design specification
 - Version release plan
 
+## [0.1.2] - 2025-03-24
+### Added
+- Command-line interface for option simulation examples
+- Support for selecting specific strategies to simulate
+
+### Fixed
+- Improved option strategy value calculation to properly handle debits and credits
+- Updated sign convention to follow standard trading notation (debit positive, credit negative)
+- Fixed P&L calculation throughout simulation for long/short positions
+- Enhanced option pricing to use individual implied volatilities for each contract
+
 ## [0.1.1] - 2025-03-23
 ### Added
 - New caching mechanisms for option chain and market data
