@@ -1,0 +1,6 @@
+---
+description: Avoid newline in command when performing git commit
+globs: 
+alwaysApply: false
+---
+Avoid newline in command when performing git commit
