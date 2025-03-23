@@ -17,6 +17,10 @@ class OptionContract:
     time_to_expiry: float  # in years
     risk_free_rate: float
     dividend_yield: float = 0.0
+    bid: float = 0.0
+    ask: float = 0.0
+    spread: float = 0.0
+    spread_percent: float = 0.0
 
 @dataclass
 class StrategyPosition:

@@ -109,11 +109,38 @@ class MarketDataFetcher:
         self.volatility_cache[cache_key] = model.volatility
         return model.volatility
     
+    def get_bid_ask_spread(self,
+                          row: pd.Series) -> Dict[str, float]:
+        """Get bid-ask spread for an option.
+        
+        Args:
+            row: A row from the option chain dataframe
+            
+        Returns:
+            Dictionary containing bid, ask, and spread information
+        """
+        bid = row.get('bid', 0)
+        ask = row.get('ask', 0)
+        
+        # Calculate spread
+        spread = ask - bid
+        spread_percent = (spread / ((bid + ask) / 2)) * 100 if (bid + ask) > 0 else 0
+        
+        return {
+            'bid': bid,
+            'ask': ask,
+            'spread': spread,
+            'spread_percent': spread_percent
+        }
+    
     def create_option_contract(self, 
                              row: pd.Series, 
                              symbol: str, 
                              expiration_date: datetime) -> OptionContract:
         """Create an OptionContract from a row of option chain data."""
+        # Get bid-ask spread information
+        spread_info = self.get_bid_ask_spread(row)
+        
         return OptionContract(
             symbol=symbol,
             strike_price=row['strike'],
@@ -123,7 +150,11 @@ class MarketDataFetcher:
             underlying_price=row['underlyingPrice'],
             implied_volatility=row['impliedVolatility'],
             time_to_expiry=(expiration_date - datetime.now()).days / 365.0,
-            risk_free_rate=self.get_risk_free_rate()
+            risk_free_rate=self.get_risk_free_rate(),
+            bid=spread_info['bid'],
+            ask=spread_info['ask'],
+            spread=spread_info['spread'],
+            spread_percent=spread_info['spread_percent']
         )
     
     def get_option_contracts(self, 

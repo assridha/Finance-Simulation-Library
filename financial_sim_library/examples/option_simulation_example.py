@@ -23,6 +23,10 @@ def print_option_contract_data(contract):
     print(f"Time to Expiry: {contract.time_to_expiry*365:.1f} days")
     print(f"Risk-Free Rate: {contract.risk_free_rate*100:.2f}%")
     print(f"Expiration: {contract.expiration_date.strftime('%Y-%m-%d')}")
+    # Add bid-ask spread information
+    print(f"Bid: ${contract.bid:.2f}")
+    print(f"Ask: ${contract.ask:.2f}")
+    print(f"Spread: ${contract.spread:.2f} ({contract.spread_percent:.2f}%)")
 
 def calculate_option_greeks(contract):
     """Calculate option Greeks for a given contract."""
@@ -101,6 +105,45 @@ def get_historical_volatility(symbol, days=30):
         print(f"Error calculating historical volatility: {str(e)}")
         return None
 
+def calculate_bid_ask_impact(positions):
+    """Calculate the total bid-ask spread impact for a strategy.
+    
+    Args:
+        positions: List of position dictionaries containing option contracts
+        
+    Returns:
+        Dictionary with total bid-ask cost and percentage impact
+    """
+    total_bid_ask_cost = 0.0
+    total_position_value = 0.0
+    
+    for pos in positions:
+        if pos.get('type') != 'stock' and 'contract' in pos:
+            contract = pos['contract']
+            quantity = abs(pos['quantity'])  # Absolute value since we care about total cost
+            
+            # Calculate half-spread cost (assumes execution at midpoint)
+            half_spread = contract.spread / 2
+            position_spread_cost = half_spread * quantity * 100  # 100 shares per contract
+            
+            # Add to total costs
+            total_bid_ask_cost += position_spread_cost
+            
+            # Add position value for percentage calculation
+            position_value = contract.premium * quantity * 100
+            total_position_value += position_value
+    
+    # Calculate percentage impact
+    if total_position_value > 0:
+        percentage_impact = (total_bid_ask_cost / total_position_value) * 100
+    else:
+        percentage_impact = 0.0
+    
+    return {
+        'total_cost': total_bid_ask_cost,
+        'percentage_impact': percentage_impact
+    }
+
 def print_strategy_positions(positions):
     """Print details of strategy positions."""
     print("\nStock Positions:")
@@ -115,8 +158,14 @@ def print_strategy_positions(positions):
         if pos.get('type') != 'stock' and 'contract' in pos:
             print(f"\nQuantity: {pos['quantity']}")
             print_option_contract_data(pos['contract'])
+    
+    # Print the bid-ask spread impact for the strategy
+    bid_ask_impact = calculate_bid_ask_impact(positions)
+    print("\nBid-Ask Spread Impact:")
+    print(f"Total Bid-Ask Cost: ${bid_ask_impact['total_cost']:.2f}")
+    print(f"Percentage of Strategy Value: {bid_ask_impact['percentage_impact']:.2f}%")
 
-def plot_simulation_results(results, strategy_name, symbol):
+def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None):
     """Plot simulation results including ticker symbol in titles."""
     if results is None:
         return
@@ -193,14 +242,24 @@ def plot_simulation_results(results, strategy_name, symbol):
     min_value = np.min(final_values)
     exp_value = np.mean(final_values)
     
-    # Add statistics annotations
-    stats_text = (
-        f"Probability of Profit: {prob_profit:.1f}%\n"
-        f"Expected Value: ${exp_value:.2f}\n"
-        f"Max Value: ${max_value:.2f}\n"
-        f"Min Value: ${min_value:.2f}\n"
-        f"Return Ratio: {(max_value-initial_value)/(initial_value-min_value) if (initial_value-min_value) != 0 else float('inf'):.2f}"
-    )
+    # Add bid-ask spread impact to stats if provided
+    if bid_ask_impact:
+        stats_text = (
+            f"Probability of Profit: {prob_profit:.1f}%\n"
+            f"Expected Value: ${exp_value:.2f}\n"
+            f"Max Value: ${max_value:.2f}\n"
+            f"Min Value: ${min_value:.2f}\n"
+            f"Return Ratio: {(max_value-initial_value)/(initial_value-min_value) if (initial_value-min_value) != 0 else float('inf'):.2f}\n"
+            f"Bid-Ask Cost: ${bid_ask_impact['total_cost']:.2f} ({bid_ask_impact['percentage_impact']:.2f}%)"
+        )
+    else:
+        stats_text = (
+            f"Probability of Profit: {prob_profit:.1f}%\n"
+            f"Expected Value: ${exp_value:.2f}\n"
+            f"Max Value: ${max_value:.2f}\n"
+            f"Min Value: ${min_value:.2f}\n"
+            f"Return Ratio: {(max_value-initial_value)/(initial_value-min_value) if (initial_value-min_value) != 0 else float('inf'):.2f}"
+        )
     
     ax2.annotate(stats_text, 
                 xy=(0.02, 0.02), xycoords='axes fraction',
@@ -306,6 +365,9 @@ def main():
             # Print strategy Greeks
             print_strategy_greeks(positions)
             
+            # Calculate bid-ask impact
+            bid_ask_impact = calculate_bid_ask_impact(positions)
+            
             # Create strategy and simulator
             strategy = SimpleStrategy(strategy_name, positions)
             
@@ -322,7 +384,7 @@ def main():
             
             # Run simulation
             results = simulator.run_simulation(num_paths=num_paths, num_steps=num_steps)
-            plot_simulation_results(results, strategy_name, symbol)
+            plot_simulation_results(results, strategy_name, symbol, bid_ask_impact)
             return results
         except Exception as e:
             print(f"Error simulating {strategy_name}: {str(e)}")
