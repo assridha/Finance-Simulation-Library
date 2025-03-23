@@ -405,7 +405,7 @@ def main():
             
             # Define positions for Simple Buy Call
             positions = [
-                {'contract': call_contract, 'quantity': 1}
+                {'type': 'option', 'contract': call_contract, 'quantity': 1, 'name': 'Long Call'}
             ]
             
             print("\nStrategy Positions:")
@@ -429,7 +429,7 @@ def main():
             # Define positions for Covered Call
             positions = [
                 {'type': 'stock', 'symbol': symbol, 'quantity': 100, 'entry_price': current_price},  # Long 100 shares
-                {'contract': strategy_contracts['call'], 'quantity': -1}  # Short 1 call
+                {'type': 'option', 'contract': strategy_contracts['call'], 'quantity': -1, 'name': 'Short Call'}  # Short 1 call
             ]
             
             print("\nStrategy Positions:")
@@ -457,8 +457,8 @@ def main():
             
             # Define positions for PMCC
             positions = [
-                {'contract': pmcc_data['long_call'], 'quantity': 1},  # Long deep ITM call
-                {'contract': pmcc_data['short_call'], 'quantity': -1}  # Short OTM call
+                {'type': 'option', 'contract': pmcc_data['long_call'], 'quantity': 1, 'name': 'Long Option Contract'},  # Long deep ITM call
+                {'type': 'option', 'contract': pmcc_data['short_call'], 'quantity': -1, 'name': 'Short Option Contract'}  # Short OTM call
             ]
             
             # Simulate
@@ -483,8 +483,8 @@ def main():
             
             # Define positions for vertical spread
             positions = [
-                {'contract': vertical_data['long_call'], 'quantity': 1},  # Long ATM call
-                {'contract': vertical_data['short_call'], 'quantity': -1}  # Short OTM call
+                {'type': 'option', 'contract': vertical_data['long_call'], 'quantity': 1, 'name': 'Long Option Contract'},  # Long ATM call
+                {'type': 'option', 'contract': vertical_data['short_call'], 'quantity': -1, 'name': 'Short Option Contract'}  # Short OTM call
             ]
             
             # Simulate
@@ -528,9 +528,9 @@ def main():
             
             # Define positions for butterfly spread
             positions = [
-                {'contract': lower_contract, 'quantity': 1},  # Long lower wing
-                {'contract': atm_contract, 'quantity': -2},   # Short body
-                {'contract': upper_contract, 'quantity': 1}   # Long upper wing
+                {'type': 'option', 'contract': lower_contract, 'quantity': 1, 'name': 'Lower Wing Call'},  # Long lower wing
+                {'type': 'option', 'contract': atm_contract, 'quantity': -2, 'name': 'Body Call'},   # Short body
+                {'type': 'option', 'contract': upper_contract, 'quantity': 1, 'name': 'Upper Wing Call'}   # Long upper wing
             ]
             
             # Simulate
