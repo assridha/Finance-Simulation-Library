@@ -125,6 +125,9 @@ class MonteCarloOptionSimulator(OptionSimulator):
         num_paths, num_steps = price_paths.shape
         option_prices = {}  # Dictionary to store prices for each option position
         
+        # Debug container to store premiums
+        debug_info = {}
+        
         # Process time steps in batches for better performance
         for t in range(num_steps):
             time_to_expiry = max(0.0001, time_steps[-1] - time_steps[t])  # Avoid zero time to expiry
@@ -146,6 +149,29 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 q = contract.dividend_yield
                 sigma = contract.implied_volatility  # Use option-specific IV
                 
+                # Debug info - store important values
+                if t == 0 and position_key not in debug_info:
+                    intrinsic = 0
+                    if contract.option_type == 'call':
+                        intrinsic = max(0, contract.underlying_price - K)
+                    else:
+                        intrinsic = max(0, K - contract.underlying_price)
+                    debug_info[position_key] = {
+                        'strike': K,
+                        'premium': contract.premium,
+                        'intrinsic': intrinsic,
+                        'time_value': contract.premium - intrinsic,
+                        'type': contract.option_type,
+                        'iv': sigma
+                    }
+                    
+                    # Print debug info
+                    print(f"\nOption {position_key} - {contract.option_type.upper()} {K}:")
+                    print(f"  Premium: ${contract.premium:.2f}")
+                    print(f"  Intrinsic value: ${intrinsic:.2f}")
+                    print(f"  Time value: ${contract.premium - intrinsic:.2f}")
+                    print(f"  IV: {sigma*100:.2f}%")
+                
                 if contract.option_type == 'call':
                     # Vectorized Black-Scholes for calls
                     values = self._vectorized_black_scholes(
@@ -161,6 +187,9 @@ class MonteCarloOptionSimulator(OptionSimulator):
                 # This ensures the initial value is correct, especially for ITM options
                 if t == 0:
                     option_prices[position_key][:, t] = pos.entry_price
+                    
+                    # Debug information - print expected vs. actual values
+                    print(f"  Model price at t=0: ${values[0]:.2f}, Using market price: ${pos.entry_price:.2f}")
                 else:
                     option_prices[position_key][:, t] = values
         
@@ -168,23 +197,46 @@ class MonteCarloOptionSimulator(OptionSimulator):
     
     def _vectorized_black_scholes(self, S, K, T, r, sigma, q, is_call=True):
         """Vectorized Black-Scholes formula calculation for multiple prices at once."""
-        if T <= 0:
-            if is_call:
-                return np.maximum(0, S - K)
-            else:
-                return np.maximum(0, K - S)
-        
-        # Calculate d1 and d2 (vectorized)
-        d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        
-        # SciPy's norm.cdf is already vectorized
+        # Calculate intrinsic value
         if is_call:
-            option_prices = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+            intrinsic_value = np.maximum(0, S - K)
         else:
-            option_prices = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
+            intrinsic_value = np.maximum(0, K - S)
         
-        return option_prices
+        # At expiration, option is worth only intrinsic value
+        if T <= 0:
+            return intrinsic_value
+        
+        # For very small T values, numerical issues can arise
+        # Add extra precision for very small T
+        T = np.maximum(T, 1e-8)
+        
+        # For deep ITM or OTM options, adjust calculation to avoid numerical issues
+        # For very large or small d1/d2 values, numerical issues can arise
+        try:
+            # Calculate d1 and d2 (vectorized)
+            d1 = (np.log(S/K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+            d2 = d1 - sigma * np.sqrt(T)
+            
+            # Handle extreme values to prevent numerical issues
+            d1 = np.clip(d1, -10, 10)  # Limit to reasonable range
+            d2 = np.clip(d2, -10, 10)  # Limit to reasonable range
+            
+            # SciPy's norm.cdf is already vectorized
+            if is_call:
+                time_value = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+                # Ensure option price is at least intrinsic value (prevent tiny precision errors)
+                option_prices = np.maximum(time_value, intrinsic_value)
+            else:
+                time_value = K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1)
+                # Ensure option price is at least intrinsic value (prevent tiny precision errors)
+                option_prices = np.maximum(time_value, intrinsic_value)
+            
+            return option_prices
+        except Exception as e:
+            # If any numerical issues occur, return the intrinsic value as a fallback
+            print(f"Warning: Black-Scholes calculation error: {e}. Using intrinsic value.")
+            return intrinsic_value
     
     def calculate_strategy_values(self, 
                                 price_paths: np.ndarray, 
@@ -206,35 +258,55 @@ class MonteCarloOptionSimulator(OptionSimulator):
             # For short positions (negative quantity), premium is a credit (negative)
             initial_value += pos.quantity * pos.entry_price * 100  # Times 100 for contract size
         
+        # Debug information
+        print(f"\nStrategy Initial Value: ${initial_value:.2f}")
+        for i, pos in enumerate(self.strategy.positions):
+            print(f"  Position {i}: {pos.quantity} contracts @ ${pos.entry_price:.2f} = ${pos.quantity * pos.entry_price * 100:.2f}")
+        
         # Set initial value for all paths
         strategy_values[:, 0] = initial_value
         
+        # Create array to hold the current market value of each position at each time step
+        # This will help with debugging
+        current_market_values = np.zeros((len(self.strategy.positions), num_paths, num_steps))
+        
+        # Fill the initial values (t=0)
+        for i, pos in enumerate(self.strategy.positions):
+            position_key = f"pos_{i}"
+            current_market_values[i, :, 0] = pos.entry_price * pos.quantity * 100
+        
         for t in range(1, num_steps):  # Start from t=1 since t=0 is initial value
             for path in range(num_paths):
-                # Start with initial value
-                current_value = initial_value
+                # Calculate the current market value of the entire strategy
+                current_value = 0.0
                 
-                # Add stock position P&L
+                # Add stock position values
                 for stock_pos in self.strategy.stock_positions:
-                    stock_value = stock_pos.quantity * price_paths[path, t]  # Current stock value
-                    stock_cost = stock_pos.quantity * stock_pos.entry_price   # Initial cost
-                    current_value = current_value + (stock_value - stock_cost)
+                    current_stock_value = stock_pos.quantity * price_paths[path, t]
+                    current_value += current_stock_value
                 
-                # Add option position current values
+                # Add option position values
                 for i, pos in enumerate(self.strategy.positions):
                     position_key = f"pos_{i}" 
                     current_option_value = option_prices[position_key][path, t]
-                    initial_option_value = pos.entry_price
                     
-                    # For long positions: add (current value - entry price) * quantity * 100
-                    # For short positions: add (entry price - current value) * |quantity| * 100
-                    if pos.quantity > 0:  # Long position
-                        option_pnl = (current_option_value - initial_option_value) * pos.quantity * 100
-                    else:  # Short position
-                        option_pnl = (initial_option_value - current_option_value) * abs(pos.quantity) * 100
+                    # Value of the position is (premium * quantity * 100)
+                    position_value = current_option_value * pos.quantity * 100
+                    current_value += position_value
                     
-                    current_value += option_pnl
+                    # Store for debugging
+                    current_market_values[i, path, t] = position_value
                 
-                strategy_values[path, t] = current_value
+                # Calculate P&L as (current_value - initial_value)
+                strategy_values[path, t] = current_value - initial_value
+                
+                # For path 0, if t is near the end, print some debug values
+                if path == 0 and t == num_steps - 1:
+                    print(f"\nAt end of simulation (path 0):")
+                    print(f"  Final stock price: ${price_paths[0, t]:.2f}")
+                    for i, pos in enumerate(self.strategy.positions):
+                        position_key = f"pos_{i}"
+                        print(f"  Position {i}: {pos.quantity} contracts, value = ${current_market_values[i, 0, t]:.2f}")
+                    print(f"  Strategy P&L: ${strategy_values[0, t]:.2f}")
         
         return strategy_values 
