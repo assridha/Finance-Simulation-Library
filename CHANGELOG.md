@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic documentation
 - Design specification
 - Version release plan
+- Bid-ask spread tracking for option contracts and simulation results
+- Total bid-ask cost impact calculation for option strategies
 
 ### Fixed
 - Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs
