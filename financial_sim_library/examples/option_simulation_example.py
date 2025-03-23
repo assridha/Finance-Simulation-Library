@@ -144,26 +144,26 @@ def calculate_bid_ask_impact(positions):
         'percentage_impact': percentage_impact
     }
 
-def print_strategy_positions(positions):
-    """Print details of strategy positions."""
+def print_strategy_positions(positions, strategy_name):
+    print(f"\nStrategy: {strategy_name}")
+    
     print("\nStock Positions:")
-    for pos in positions:
-        if pos.get('type') == 'stock':
-            print(f"Symbol: {pos.get('symbol', 'UNKNOWN')}")
-            print(f"Quantity: {pos['quantity']} shares")
-            print(f"Entry Price: ${pos.get('entry_price', 0):.2f}")
+    stock_positions = [p for p in positions if p['type'] == 'stock']
+    for position in stock_positions:
+        print(f"  {position['quantity']} shares of {position['symbol']} @ ${position['entry_price']:.2f}")
     
     print("\nOption Positions:")
-    for pos in positions:
-        if pos.get('type') != 'stock' and 'contract' in pos:
-            print(f"\nQuantity: {pos['quantity']}")
-            print_option_contract_data(pos['contract'])
+    option_positions = [p for p in positions if p['type'] == 'option']
+    for position in option_positions:
+        contract = position['contract']
+        print(f"\n{position.get('name', '')}:")
+        print_option_contract_data(contract)
     
-    # Print the bid-ask spread impact for the strategy
+    # Calculate bid-ask impact
     bid_ask_impact = calculate_bid_ask_impact(positions)
-    print("\nBid-Ask Spread Impact:")
-    print(f"Total Bid-Ask Cost: ${bid_ask_impact['total_cost']:.2f}")
-    print(f"Percentage of Strategy Value: {bid_ask_impact['percentage_impact']:.2f}%")
+    print(f"\nTotal Bid-Ask Impact: ${bid_ask_impact['total_cost']:.2f} ({bid_ask_impact['percentage_impact']:.2f}% of position value)")
+    
+    return stock_positions, option_positions
 
 def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None):
     """Plot simulation results including ticker symbol in titles."""
@@ -409,7 +409,7 @@ def main():
             ]
             
             print("\nStrategy Positions:")
-            print_strategy_positions(positions)
+            stock_positions, option_positions = print_strategy_positions(positions, strategy_names['simple_call'])
             
             # Simulate
             simulate_strategy(strategy_names['simple_call'], positions, volatility, risk_free_rate)
@@ -433,7 +433,7 @@ def main():
             ]
             
             print("\nStrategy Positions:")
-            print_strategy_positions(positions)
+            stock_positions, option_positions = print_strategy_positions(positions, strategy_names['covered_call'])
             
             # Simulate
             simulate_strategy(strategy_names['covered_call'], positions, volatility, risk_free_rate)
