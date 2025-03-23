@@ -1,0 +1,71 @@
+---
+description: Perform this when user asks to create a new release
+globs: 
+alwaysApply: false
+---
+# Complete Release Workflow Rules
+
+When you ask me to commit changes, create a new release, or manage version updates, I'll follow this systematic workflow:
+
+## 0. Ask for Confirmation
+
+Before taking any action, I will:
+- Clearly explain the release process and steps that will be performed
+- Ask for explicit confirmation before proceeding
+- Provide options to abort if you're not ready
+
+## 1. Code Changes & Version Updates
+
+- Update version number in `setup.py` (following semantic versioning)
+- Update `CHANGELOG.md` with detailed changes under the new version
+- Create release notes in `RELEASE_NOTES_v{VERSION}.md` with comprehensive details
+
+## 2. Documentation Updates
+
+- Update README.md with new features or changes
+- Update any version references in documentation
+- Ensure examples reflect the latest functionality
+
+## 3. Version Control Management
+
+- Stage modified files: `git add CHANGELOG.md README.md setup.py RELEASE_NOTES_v{VERSION}.md`
+- Commit changes with descriptive message: `git commit -m "Release v{VERSION}: [Brief description]"`
+- Create an annotated tag: `git tag -a "v{VERSION}" -m "Release version {VERSION}"`
+
+## 4. GitHub Synchronization
+
+- Push commits to GitHub: `git push origin main`
+- Push tags to GitHub: `git push origin v{VERSION}`
+- Create GitHub release using the CLI: 
+  ```
+  gh release create "v{VERSION}" \
+    --title "v{VERSION}: Release" \
+    --notes-file "RELEASE_NOTES_v{VERSION}.md"
+  ```
+
+## 5. Distribution Package Management
+
+- Build the distribution: `python setup.py sdist bdist_wheel`
+- Upload to PyPI if requested: `python -m twine upload dist/*`
+
+## 6. Post-Release Tasks
+
+- Verify release is visible on GitHub
+- Update documentation website if applicable
+- Announce the release to users
+
+## 7. Automated Release Script
+
+If available, I'll use the `release.sh` script which automates these steps and provides:
+- Initial confirmation before proceeding
+- Detailed list of actions that will be taken
+- Clean working directory verification
+- GitHub synchronization
+- Test execution before release
+- Tag and release creation
+- Distribution package building
+- Visual release checklist
+
+---
+
+By following these rules, I'll ensure a consistent, thorough release process whenever you request version updates or releases, always asking for your confirmation before proceeding with any steps.
