@@ -114,173 +114,6 @@ class StrategyAnalyzer:
         }
     
     @staticmethod
-    def calculate_cost_basis(positions: List[Dict], strategy_name: str) -> Dict[str, float]:
-        """
-        Calculate the maximum potential loss (cost basis) for a trade based on the options strategy.
-        
-        Args:
-            positions: List of position dictionaries
-            strategy_name: Name of the strategy for specific calculation logic
-            
-        Returns:
-            Dictionary with cost basis details including maximum loss and breakeven points
-        """
-        # Initialize variables
-        max_loss = 0
-        breakeven_points = []
-        cost_basis_details = {}
-        net_premium = 0
-        stock_cost = 0
-        max_width = 0
-        
-        # Calculate net premium for all option positions
-        for pos in positions:
-            if pos.get('type') != 'stock' and 'contract' in pos:
-                contract = pos['contract']
-                quantity = pos['quantity']
-                position_cost = contract.premium * quantity * 100  # 100 shares per contract
-                net_premium += position_cost
-            elif pos.get('type') == 'stock':
-                # Track stock position cost
-                stock_cost += pos['entry_price'] * pos['quantity']
-        
-        # Identify strategy type by name and calculate maximum loss
-        if "Simple Buy Call" in strategy_name or "Simple Buy Put" in strategy_name:
-            # Long option: maximum loss is the premium paid
-            max_loss = abs(net_premium)
-            # Breakeven for call is strike + premium
-            # Breakeven for put is strike - premium
-            if positions and 'contract' in positions[0]:
-                contract = positions[0]['contract']
-                premium_per_share = contract.premium
-                if contract.option_type.lower() == 'call':
-                    breakeven_points = [contract.strike_price + premium_per_share]
-                else:
-                    breakeven_points = [contract.strike_price - premium_per_share]
-        
-        elif "Covered Call" in strategy_name:
-            # Covered call: maximum loss is stock price - premium received (if stock goes to 0)
-            # Find stock and call positions
-            stock_position = next((p for p in positions if p.get('type') == 'stock'), None)
-            call_position = next((p for p in positions if p.get('type') != 'stock' and 
-                                  'contract' in p and p['contract'].option_type.lower() == 'call'), None)
-            
-            if stock_position and call_position:
-                stock_entry_price = stock_position['entry_price']
-                premium_received = call_position['contract'].premium * abs(call_position['quantity'])
-                max_loss = stock_entry_price * stock_position['quantity'] - (premium_received * 100)
-                # Breakeven is stock cost - premium received
-                breakeven_points = [stock_entry_price - (premium_received * 100 / stock_position['quantity'])]
-            else:
-                max_loss = abs(stock_cost) - abs(net_premium)
-        
-        elif "Poor Man's Covered Call" in strategy_name:
-            # PMCC: maximum loss is the net debit paid for the spread
-            max_loss = abs(net_premium)
-            # Find long and short call for breakeven calculation
-            long_call = next((p for p in positions if p.get('quantity', 0) > 0 and 'contract' in p), None)
-            short_call = next((p for p in positions if p.get('quantity', 0) < 0 and 'contract' in p), None)
-            
-            if long_call and short_call:
-                long_strike = long_call['contract'].strike_price
-                short_strike = short_call['contract'].strike_price
-                net_debit = long_call['contract'].premium * 100 - (short_call['contract'].premium * 100)
-                # Breakeven is long strike + net debit
-                breakeven_points = [long_strike + (net_debit / 100)]
-        
-        elif "Vertical Spread" in strategy_name:
-            # Vertical spread: maximum loss is width of strikes - net premium received (for credit spread)
-            # or net premium paid (for debit spread)
-            sorted_options = sorted([p for p in positions if 'contract' in p], 
-                                  key=lambda p: p['contract'].strike_price)
-            
-            if len(sorted_options) >= 2:
-                low_strike = sorted_options[0]['contract'].strike_price
-                high_strike = sorted_options[-1]['contract'].strike_price
-                strike_width = high_strike - low_strike
-                
-                # Determine if credit or debit spread
-                if net_premium > 0:  # Debit spread (paid premium)
-                    max_loss = abs(net_premium)
-                else:  # Credit spread (received premium)
-                    max_loss = strike_width * 100 - abs(net_premium)
-                
-                # Breakeven calculation
-                first_contract = sorted_options[0]['contract']
-                if first_contract.option_type.lower() == 'call':
-                    # Call vertical
-                    if net_premium > 0:  # Bull call spread
-                        breakeven_points = [low_strike + (abs(net_premium) / 100)]
-                    else:  # Bear call spread
-                        breakeven_points = [high_strike - (abs(net_premium) / 100)]
-                else:
-                    # Put vertical
-                    if net_premium > 0:  # Bull put spread
-                        breakeven_points = [high_strike - (abs(net_premium) / 100)]
-                    else:  # Bear put spread
-                        breakeven_points = [low_strike + (abs(net_premium) / 100)]
-        
-        elif "Butterfly" in strategy_name:
-            # Butterfly spread: maximum loss is the net premium paid
-            max_loss = abs(net_premium)
-            
-            # Extract all option positions and sort by strike
-            option_positions = [p for p in positions if 'contract' in p]
-            sorted_options = sorted(option_positions, key=lambda p: p['contract'].strike_price)
-            
-            if len(sorted_options) >= 3:
-                # Get unique strike prices
-                strikes = sorted(set(p['contract'].strike_price for p in option_positions))
-                if len(strikes) >= 3:
-                    # For butterfly, breakevens are at body ± net_premium_per_contract
-                    middle_strike = strikes[len(strikes)//2]
-                    wing_width = strikes[-1] - middle_strike  # Assuming symmetrical
-                    
-                    # Calculate net premium per wing width
-                    net_premium_per_spread = abs(net_premium) / 100
-                    
-                    # Breakeven points
-                    breakeven_points = [
-                        middle_strike - wing_width + net_premium_per_spread,
-                        middle_strike + wing_width - net_premium_per_spread
-                    ]
-        
-        else:
-            # Generic calculation for other strategies
-            # Calculate absolute value of negative cash flow (debits)
-            debit_value = 0
-            credit_value = 0
-            
-            for pos in positions:
-                if pos.get('type') != 'stock' and 'contract' in pos:
-                    contract = pos['contract']
-                    quantity = pos['quantity']
-                    position_value = contract.premium * abs(quantity) * 100
-                    
-                    if quantity > 0:  # Long position (debit)
-                        debit_value += position_value
-                    else:  # Short position (credit)
-                        credit_value += position_value
-                elif pos.get('type') == 'stock':
-                    # Stock positions
-                    if pos['quantity'] > 0:  # Long stock
-                        debit_value += abs(pos['entry_price'] * pos['quantity'])
-                    else:  # Short stock
-                        credit_value += abs(pos['entry_price'] * pos['quantity'])
-            
-            # Maximum loss is usually the net debit paid
-            max_loss = max(0, debit_value - credit_value)
-        
-        # Prepare result dictionary
-        cost_basis_details = {
-            'maximum_loss': max_loss,
-            'breakeven_points': breakeven_points,
-            'net_premium': net_premium,
-        }
-        
-        return cost_basis_details
-    
-    @staticmethod
     def print_strategy_greeks(positions) -> Dict[str, float]:
         """
         Calculate and print total Greeks for a strategy.
@@ -318,13 +151,14 @@ class StrategyAnalyzer:
         return total_greeks
     
     @staticmethod
-    def print_strategy_positions(positions, strategy_name) -> Tuple[List, List]:
+    def print_strategy_positions(positions, strategy_name, strategy_composer=None) -> Tuple[List, List]:
         """
         Print detailed information about strategy positions.
         
         Args:
             positions: List of position dictionaries
             strategy_name: Name of the strategy
+            strategy_composer: Optional StrategyComposer instance that created the strategy
             
         Returns:
             Tuple of stock positions and option positions
@@ -355,7 +189,27 @@ class StrategyAnalyzer:
         print(f"\nTotal Bid-Ask Impact: ${bid_ask_impact['total_cost']:.2f} ({bid_ask_impact['percentage_impact']:.2f}% of position value)")
         
         # Calculate cost basis (maximum potential loss)
-        cost_basis = StrategyAnalyzer.calculate_cost_basis(positions, strategy_name)
+        if strategy_composer:
+            # Use the strategy-specific calculation if composer is provided
+            cost_basis = strategy_composer.calculate_cost_basis(positions)
+        else:
+            # Legacy fallback - create a default cost basis calculation
+            cost_basis = {
+                'maximum_loss': 0,
+                'breakeven_points': [],
+                'net_premium': 0
+            }
+            
+            # Calculate net premium for all positions as a basic estimate
+            for pos in positions:
+                if pos.get('type') != 'stock' and 'contract' in pos:
+                    contract = pos['contract']
+                    quantity = pos['quantity']
+                    position_cost = contract.premium * quantity * 100
+                    cost_basis['net_premium'] += position_cost
+            
+            cost_basis['maximum_loss'] = abs(cost_basis['net_premium'])
+        
         print(f"\nCost Basis (Maximum Potential Loss): ${cost_basis['maximum_loss']:.2f}")
         
         # Print breakeven points if available

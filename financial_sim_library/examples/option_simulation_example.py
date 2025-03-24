@@ -51,9 +51,9 @@ def calculate_bid_ask_impact(positions):
     # Use the StrategyAnalyzer's implementation
     return StrategyAnalyzer.calculate_bid_ask_impact(positions)
 
-def print_strategy_positions(positions, strategy_name):
+def print_strategy_positions(positions, strategy_name, strategy_composer=None):
     """Print detailed information about strategy positions."""
-    return StrategyAnalyzer.print_strategy_positions(positions, strategy_name)
+    return StrategyAnalyzer.print_strategy_positions(positions, strategy_name, strategy_composer)
 
 def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None):
     """Plot simulation results including ticker symbol in titles."""
@@ -328,11 +328,16 @@ def main():
             # Create the strategy
             strategy, positions = composer.create_strategy(symbol, current_price, actual_expiry, fetcher)
             
-            # Print details
-            print_strategy_positions(positions, strategy_names[strategy_key])
+            # Pass the composer to print_strategy_positions to use its cost basis calculation
+            print_strategy_positions(positions, strategy_names[strategy_key], composer)
             
-            # Simulate
-            simulate_strategy(strategy_names[strategy_key], positions, volatility, risk_free_rate)
+            # Simulate the strategy with Monte Carlo
+            results = simulate_strategy(
+                strategy_names[strategy_key],
+                positions, 
+                volatility=volatility,
+                risk_free_rate=risk_free_rate
+            )
         except Exception as e:
             print(f"Error preparing {strategy_names[strategy_key]}: {str(e)}")
 
