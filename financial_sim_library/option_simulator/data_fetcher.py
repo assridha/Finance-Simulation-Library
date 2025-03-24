@@ -215,73 +215,36 @@ class MarketDataFetcher:
             'put': self.create_option_contract(atm_put, symbol, expiration_date)
         }
     
-    def get_option_strategy_contracts(self, 
-                                    symbol: str, 
-                                    strategy_type: str, 
-                                    expiration_date: Optional[datetime] = None,
-                                    target_delta: float = 0.3) -> Dict:
-        """Get option contracts for a specific strategy."""
-        current_price = self.get_stock_price(symbol)
+    def find_option_by_delta(self,
+                           symbol: str,
+                           expiration_date: datetime,
+                           option_type: str,
+                           target_delta: float) -> OptionContract:
+        """
+        Find an option with a delta closest to the target delta value.
+        
+        Args:
+            symbol: Ticker symbol
+            expiration_date: Option expiration date
+            option_type: 'call' or 'put'
+            target_delta: Target delta value (positive for calls, negative for puts)
+            
+        Returns:
+            OptionContract with the closest delta to the target
+        """
         chain = self.get_option_chain(symbol, expiration_date)
+        current_price = self.get_stock_price(symbol)
         
         if chain.empty:
             raise ValueError(f"No options available for {symbol}")
         
-        if expiration_date is None:
-            expiration_date = datetime.strptime(chain['expiration'].iloc[0], '%Y-%m-%d')
+        # Filter by option type
+        filtered_chain = chain[chain['option_type'] == option_type.lower()]
         
-        if strategy_type == 'covered_call':
-            # Get OTM call with target delta for covered call
-            otm_call = find_option_by_delta(
-                chain[chain['option_type'] == 'call'], 
-                target_delta, 
-                current_price, 
-                'call'
-            )
-            return {
-                'stock': current_price,
-                'call': self.create_option_contract(otm_call, symbol, expiration_date)
-            }
+        # Use utility function to find option by delta
+        option_row = find_option_by_delta(filtered_chain, target_delta, current_price, option_type.lower())
         
-        elif strategy_type == 'poor_mans_covered_call':
-            # Get deep ITM call and OTM call
-            itm_call = find_option_by_delta(
-                chain[chain['option_type'] == 'call'], 
-                0.8,  # Deep ITM call
-                current_price, 
-                'call'
-            )
-            otm_call = find_option_by_delta(
-                chain[chain['option_type'] == 'call'], 
-                target_delta, 
-                current_price, 
-                'call'
-            )
-            
-            return {
-                'long_call': self.create_option_contract(itm_call, symbol, expiration_date),
-                'short_call': self.create_option_contract(otm_call, symbol, expiration_date)
-            }
+        if option_row is None:
+            raise ValueError(f"No suitable {option_type} option found with delta near {target_delta}")
         
-        elif strategy_type == 'vertical_spread':
-            # Get ATM call and OTM call for vertical spread
-            atm_call = find_option_by_delta(
-                chain[chain['option_type'] == 'call'], 
-                0.5,  # ATM call
-                current_price, 
-                'call'
-            )
-            otm_call = find_option_by_delta(
-                chain[chain['option_type'] == 'call'], 
-                target_delta, 
-                current_price, 
-                'call'
-            )
-            
-            return {
-                'long_call': self.create_option_contract(atm_call, symbol, expiration_date),
-                'short_call': self.create_option_contract(otm_call, symbol, expiration_date)
-            }
-        
-        else:
-            raise ValueError(f"Unsupported strategy type: {strategy_type}") 
+        return self.create_option_contract(option_row, symbol, expiration_date) 
