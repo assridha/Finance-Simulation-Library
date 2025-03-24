@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Version release plan
 - Bid-ask spread tracking for option contracts and simulation results
 - Total bid-ask cost impact calculation for option strategies
+- Object-oriented cost basis calculation system with strategy-specific implementations
+- Maximum potential loss and breakeven point calculations for all option strategies
+
+### Changed
+- Refactored cost basis calculation to use polymorphic design for better extensibility
+- Improved strategy composer interface to include cost basis calculation methods
+- Refactored option simulation example to use new modular components
+- Improved display of position information with clearer terminology
 
 ### Fixed
 - Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs
