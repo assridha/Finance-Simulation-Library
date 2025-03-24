@@ -55,7 +55,82 @@ def print_strategy_positions(positions, strategy_name, strategy_composer=None):
     """Print detailed information about strategy positions."""
     return StrategyAnalyzer.print_strategy_positions(positions, strategy_name, strategy_composer)
 
-def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None):
+def calculate_max_pnl_percentage(strategy_values, initial_value, cost_basis):
+    """
+    Calculate the maximum PnL% for each simulated path.
+    
+    Args:
+        strategy_values: Array of strategy value paths from simulation
+        initial_value: Initial value of the strategy
+        cost_basis: Maximum potential loss (cost basis) of the strategy
+        
+    Returns:
+        Array of max PnL% values for each path
+    """
+    max_values = np.max(strategy_values, axis=1)
+    max_pnl_pct = (max_values - initial_value) / cost_basis * 100
+    return max_pnl_pct
+
+def plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol):
+    """
+    Plot the max PnL% values against their quantiles.
+    
+    Args:
+        max_pnl_pct: Array of max PnL% values
+        strategy_name: Name of the strategy
+        symbol: Ticker symbol
+    """
+    # Create a new figure
+    plt.figure(figsize=(10, 6))
+    
+    # Sort max_pnl_pct values
+    sorted_pnl = np.sort(max_pnl_pct)
+    
+    # Calculate quantiles (0 to 1)
+    quantiles = np.arange(1, len(sorted_pnl) + 1) / len(sorted_pnl)
+    
+    # Plot
+    plt.plot(quantiles, sorted_pnl, 'b-', linewidth=2)
+    plt.axhline(y=0, color='r', linestyle='--', alpha=0.7)
+    
+    # Key quantiles
+    q1 = np.percentile(max_pnl_pct, 25)
+    median = np.percentile(max_pnl_pct, 50)
+    q3 = np.percentile(max_pnl_pct, 75)
+    p95 = np.percentile(max_pnl_pct, 95)
+    
+    # Calculate mean and standard deviation
+    mean = np.mean(max_pnl_pct)
+    std_dev = np.std(max_pnl_pct)
+    
+    # Add text with key statistics
+    stats_text = (
+        f"Max PnL% Statistics:\n"
+        f"Mean: {mean:.2f}%\n"
+        f"Median: {median:.2f}%\n"
+        f"25th %tile: {q1:.2f}%\n"
+        f"75th %tile: {q3:.2f}%\n"
+        f"95th %tile: {p95:.2f}%\n"
+        f"Std Dev: {std_dev:.2f}%"
+    )
+    
+    plt.annotate(stats_text, xy=(0.02, 0.95), xycoords='axes fraction', 
+                 verticalalignment='top',
+                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
+    
+    # Add labels and title
+    plt.title(f'{symbol} - {strategy_name} - Max PnL% Quantile Plot')
+    plt.xlabel('Quantile')
+    plt.ylabel('Max PnL%')
+    plt.grid(True)
+    
+    # Add key quantile markers
+    plt.scatter([0.25, 0.5, 0.75, 0.95], [q1, median, q3, p95], color='red', s=50, zorder=5)
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None, cost_basis=None):
     """Plot simulation results including ticker symbol in titles."""
     if results is None:
         return
@@ -151,9 +226,23 @@ def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None)
             f"Return Ratio: {(max_value-initial_value)/(initial_value-min_value) if (initial_value-min_value) != 0 else float('inf'):.2f}"
         )
     
-    ax2.annotate(stats_text, 
-                xy=(0.02, 0.02), xycoords='axes fraction',
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
+    # Calculate max PnL% statistics if cost basis is provided
+    if cost_basis is not None and cost_basis > 0:
+        # Calculate max PnL% for each path
+        max_pnl_pct = calculate_max_pnl_percentage(strategy_values, initial_value, cost_basis)
+        
+        # Calculate key statistics
+        mean_max_pnl = np.mean(max_pnl_pct)
+        p95_max_pnl = np.percentile(max_pnl_pct, 95)
+        
+        # Add to stats text
+        stats_text += f"\nAvg Max PnL%: {mean_max_pnl:.2f}%\n95th %tile Max PnL%: {p95_max_pnl:.2f}%"
+        
+        # Plot max PnL% quantile plot
+        plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol)
+    
+    ax2.annotate(stats_text, xy=(0.02, 0.95), xycoords='axes fraction', verticalalignment='top',
+                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
     
     ax2.set_title(f'{symbol} - {strategy_name} - Strategy Value')
     ax2.set_xlabel('Date')
@@ -165,7 +254,6 @@ def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None)
     ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
     plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45)
     
-    # Adjust layout to prevent label cutoff
     plt.tight_layout()
     plt.show()
 
@@ -256,7 +344,7 @@ def main():
     num_steps = min(252, days_to_expiry)  # Use fewer steps if expiry is closer
     
     # Reusable simulation function to reduce code duplication
-    def simulate_strategy(strategy_name, positions, volatility=None, risk_free_rate=None):
+    def simulate_strategy(strategy_name, positions, volatility=None, risk_free_rate=None, cost_basis=None):
         """Run a Monte Carlo simulation for the given strategy."""
         print(f"\nSimulating {strategy_name} strategy...")
         try:
@@ -298,7 +386,9 @@ def main():
             
             # Run simulation
             results = simulator.run_simulation(num_paths=num_paths, num_steps=num_steps)
-            plot_simulation_results(results, strategy_name, symbol, bid_ask_impact)
+            
+            # Plot results with cost basis
+            plot_simulation_results(results, strategy_name, symbol, bid_ask_impact, cost_basis)
             return results
         except Exception as e:
             print(f"Error simulating {strategy_name}: {str(e)}")
@@ -329,14 +419,19 @@ def main():
             strategy, positions = composer.create_strategy(symbol, current_price, actual_expiry, fetcher)
             
             # Pass the composer to print_strategy_positions to use its cost basis calculation
-            print_strategy_positions(positions, strategy_names[strategy_key], composer)
+            stock_positions, option_positions = print_strategy_positions(positions, strategy_names[strategy_key], composer)
+            
+            # Get cost basis for Max PnL% calculation
+            cost_basis_details = composer.calculate_cost_basis(positions)
+            cost_basis = cost_basis_details['maximum_loss']
             
             # Simulate the strategy with Monte Carlo
             results = simulate_strategy(
                 strategy_names[strategy_key],
                 positions, 
                 volatility=volatility,
-                risk_free_rate=risk_free_rate
+                risk_free_rate=risk_free_rate,
+                cost_basis=cost_basis
             )
         except Exception as e:
             print(f"Error preparing {strategy_names[strategy_key]}: {str(e)}")
