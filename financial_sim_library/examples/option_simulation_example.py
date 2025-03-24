@@ -72,15 +72,15 @@ def calculate_max_pnl_percentage(strategy_values, initial_value, cost_basis):
     return max_pnl_pct
 
 def plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol):
-    """Plot the max PnL% values against their quantiles."""
+    """Plot the max PnL% values against their exceedance probability (1-quantile)."""
     # Create a new figure
     fig = plt.figure(figsize=(10, 6))
     
-    # Sort the max_pnl_pct values
-    sorted_pnl = np.sort(max_pnl_pct)
+    # Sort the max_pnl_pct values in descending order (for probability of exceeding)
+    sorted_pnl = np.sort(max_pnl_pct)[::-1]
     
-    # Calculate quantiles (0 to 1)
-    quantiles = np.arange(1, len(sorted_pnl) + 1) / len(sorted_pnl)
+    # Calculate exceedance probabilities (1-quantile)
+    exceedance_prob = np.arange(1, len(sorted_pnl) + 1) / len(sorted_pnl)
     
     # Calculate key statistics
     mean_pnl = np.mean(max_pnl_pct)
@@ -95,61 +95,62 @@ def plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol):
     p95 = np.percentile(max_pnl_pct, 95)
     p99 = np.percentile(max_pnl_pct, 99)
     
-    # Plot quantile curve
-    plt.plot(quantiles, sorted_pnl, 'b-', linewidth=2)
+    # Plot exceedance probability curve
+    plt.plot(exceedance_prob, sorted_pnl, 'b-', linewidth=2)
     
     # Add horizontal lines for mean and median
     plt.axhline(y=mean_pnl, color='r', linestyle='-', label=f'Mean: {mean_pnl:.2f}%')
     plt.axhline(y=median_pnl, color='g', linestyle='--', label=f'Median: {median_pnl:.2f}%')
     
-    # Add vertical lines for key percentiles
-    plt.axvline(x=0.1, color='gray', linestyle=':', alpha=0.5)
-    plt.axvline(x=0.25, color='gray', linestyle=':', alpha=0.5)
-    plt.axvline(x=0.75, color='gray', linestyle=':', alpha=0.5)
-    plt.axvline(x=0.9, color='gray', linestyle=':', alpha=0.5)
-    plt.axvline(x=0.95, color='gray', linestyle=':', alpha=0.5)
-    plt.axvline(x=0.99, color='gray', linestyle=':', alpha=0.5)
+    # Add vertical lines for key probabilities
+    plt.axvline(x=0.9, color='gray', linestyle=':', alpha=0.5)  # 90% probability (was 10%)
+    plt.axvline(x=0.75, color='gray', linestyle=':', alpha=0.5) # 75% probability (was 25%)
+    plt.axvline(x=0.25, color='gray', linestyle=':', alpha=0.5) # 25% probability (was 75%)
+    plt.axvline(x=0.1, color='gray', linestyle=':', alpha=0.5)  # 10% probability (was 90%)
     
-    # Add annotations for percentiles
-    plt.annotate(f'10%: {p10:.2f}%', xy=(0.1, p10), xytext=(0.1, p10 + 10),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
-                horizontalalignment='center', verticalalignment='bottom')
+    # Get values at specific exceedance probabilities
+    # Find indices for probabilities
+    idx_90 = np.abs(exceedance_prob - 0.9).argmin()
+    idx_75 = np.abs(exceedance_prob - 0.75).argmin()
+    idx_25 = np.abs(exceedance_prob - 0.25).argmin()
+    idx_10 = np.abs(exceedance_prob - 0.1).argmin()
+    idx_05 = np.abs(exceedance_prob - 0.05).argmin()
+    idx_01 = np.abs(exceedance_prob - 0.01).argmin()
     
-    plt.annotate(f'25%: {p25:.2f}%', xy=(0.25, p25), xytext=(0.25, p25 + 10),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
-                horizontalalignment='center', verticalalignment='bottom')
+    # Get PnL values at these probabilities
+    val_90 = sorted_pnl[idx_90]
+    val_75 = sorted_pnl[idx_75]
+    val_25 = sorted_pnl[idx_25]
+    val_10 = sorted_pnl[idx_10]
+    val_05 = sorted_pnl[idx_05]
+    val_01 = sorted_pnl[idx_01]
     
-    plt.annotate(f'75%: {p75:.2f}%', xy=(0.75, p75), xytext=(0.75, p75 + 10),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
-                horizontalalignment='center', verticalalignment='bottom')
+    # Add red dots for key probabilities
+    key_probs = [0.9, 0.75, 0.25, 0.1]
+    key_values = [val_90, val_75, val_25, val_10]
+    plt.scatter(key_probs, key_values, color='red', s=50, zorder=5)
     
-    plt.annotate(f'90%: {p90:.2f}%', xy=(0.9, p90), xytext=(0.9, p90 + 10),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
-                horizontalalignment='center', verticalalignment='bottom')
-    
-    plt.annotate(f'95%: {p95:.2f}%', xy=(0.95, p95), xytext=(0.95, p95 + 10),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
-                horizontalalignment='center', verticalalignment='bottom')
-    
-    plt.annotate(f'99%: {p99:.2f}%', xy=(0.99, p99), xytext=(0.99, p99 + 10),
-                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
-                horizontalalignment='center', verticalalignment='bottom')
+    # Add text annotations for percentiles
+    plt.text(0.9, val_90, f' 90% prob: {val_90:.2f}%', ha='left', va='bottom', fontsize=9)
+    plt.text(0.75, val_75, f' 75% prob: {val_75:.2f}%', ha='left', va='bottom', fontsize=9)
+    plt.text(0.25, val_25, f' 25% prob: {val_25:.2f}%', ha='left', va='bottom', fontsize=9)
+    plt.text(0.1, val_10, f' 10% prob: {val_10:.2f}%', ha='left', va='bottom', fontsize=9)
     
     # Add statistics text box
     stats_text = (
         f"Mean: {mean_pnl:.2f}%\n"
         f"Median: {median_pnl:.2f}%\n"
         f"Std Dev: {std_dev:.2f}%\n"
-        f"95th Percentile: {p95:.2f}%\n"
-        f"99th Percentile: {p99:.2f}%"
+        f"5% Probability: {val_05:.2f}%\n"
+        f"1% Probability: {val_01:.2f}%"
     )
     
     plt.annotate(stats_text, xy=(0.02, 0.97), xycoords='axes fraction', verticalalignment='top',
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
     
     # Set title and labels
-    plt.title(f'{symbol} - {strategy_name} - Max PnL% Distribution')
-    plt.xlabel('Quantile')
+    plt.title(f'{symbol} - {strategy_name} - Max PnL% Exceedance Probability')
+    plt.xlabel('Probability of Achieving at Least X% Return')
     plt.ylabel('Max PnL%')
     plt.grid(True)
     plt.legend()
