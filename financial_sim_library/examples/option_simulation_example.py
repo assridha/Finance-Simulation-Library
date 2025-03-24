@@ -72,75 +72,102 @@ def calculate_max_pnl_percentage(strategy_values, initial_value, cost_basis):
     return max_pnl_pct
 
 def plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol):
-    """
-    Plot the max PnL% values against their quantiles.
-    
-    Args:
-        max_pnl_pct: Array of max PnL% values
-        strategy_name: Name of the strategy
-        symbol: Ticker symbol
-    """
+    """Plot the max PnL% values against their quantiles."""
     # Create a new figure
-    plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 6))
     
-    # Sort max_pnl_pct values
+    # Sort the max_pnl_pct values
     sorted_pnl = np.sort(max_pnl_pct)
     
     # Calculate quantiles (0 to 1)
     quantiles = np.arange(1, len(sorted_pnl) + 1) / len(sorted_pnl)
     
-    # Plot
-    plt.plot(quantiles, sorted_pnl, 'b-', linewidth=2)
-    plt.axhline(y=0, color='r', linestyle='--', alpha=0.7)
-    
-    # Key quantiles
-    q1 = np.percentile(max_pnl_pct, 25)
-    median = np.percentile(max_pnl_pct, 50)
-    q3 = np.percentile(max_pnl_pct, 75)
-    p95 = np.percentile(max_pnl_pct, 95)
-    
-    # Calculate mean and standard deviation
-    mean = np.mean(max_pnl_pct)
+    # Calculate key statistics
+    mean_pnl = np.mean(max_pnl_pct)
+    median_pnl = np.median(max_pnl_pct)
     std_dev = np.std(max_pnl_pct)
     
-    # Add text with key statistics
+    # Calculate percentiles
+    p10 = np.percentile(max_pnl_pct, 10)
+    p25 = np.percentile(max_pnl_pct, 25)
+    p75 = np.percentile(max_pnl_pct, 75)
+    p90 = np.percentile(max_pnl_pct, 90)
+    p95 = np.percentile(max_pnl_pct, 95)
+    p99 = np.percentile(max_pnl_pct, 99)
+    
+    # Plot quantile curve
+    plt.plot(quantiles, sorted_pnl, 'b-', linewidth=2)
+    
+    # Add horizontal lines for mean and median
+    plt.axhline(y=mean_pnl, color='r', linestyle='-', label=f'Mean: {mean_pnl:.2f}%')
+    plt.axhline(y=median_pnl, color='g', linestyle='--', label=f'Median: {median_pnl:.2f}%')
+    
+    # Add vertical lines for key percentiles
+    plt.axvline(x=0.1, color='gray', linestyle=':', alpha=0.5)
+    plt.axvline(x=0.25, color='gray', linestyle=':', alpha=0.5)
+    plt.axvline(x=0.75, color='gray', linestyle=':', alpha=0.5)
+    plt.axvline(x=0.9, color='gray', linestyle=':', alpha=0.5)
+    plt.axvline(x=0.95, color='gray', linestyle=':', alpha=0.5)
+    plt.axvline(x=0.99, color='gray', linestyle=':', alpha=0.5)
+    
+    # Add annotations for percentiles
+    plt.annotate(f'10%: {p10:.2f}%', xy=(0.1, p10), xytext=(0.1, p10 + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    plt.annotate(f'25%: {p25:.2f}%', xy=(0.25, p25), xytext=(0.25, p25 + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    plt.annotate(f'75%: {p75:.2f}%', xy=(0.75, p75), xytext=(0.75, p75 + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    plt.annotate(f'90%: {p90:.2f}%', xy=(0.9, p90), xytext=(0.9, p90 + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    plt.annotate(f'95%: {p95:.2f}%', xy=(0.95, p95), xytext=(0.95, p95 + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    plt.annotate(f'99%: {p99:.2f}%', xy=(0.99, p99), xytext=(0.99, p99 + 10),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8), 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    # Add statistics text box
     stats_text = (
-        f"Max PnL% Statistics:\n"
-        f"Mean: {mean:.2f}%\n"
-        f"Median: {median:.2f}%\n"
-        f"25th %tile: {q1:.2f}%\n"
-        f"75th %tile: {q3:.2f}%\n"
-        f"95th %tile: {p95:.2f}%\n"
-        f"Std Dev: {std_dev:.2f}%"
+        f"Mean: {mean_pnl:.2f}%\n"
+        f"Median: {median_pnl:.2f}%\n"
+        f"Std Dev: {std_dev:.2f}%\n"
+        f"95th Percentile: {p95:.2f}%\n"
+        f"99th Percentile: {p99:.2f}%"
     )
     
-    plt.annotate(stats_text, xy=(0.02, 0.95), xycoords='axes fraction', 
-                 verticalalignment='top',
-                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
+    plt.annotate(stats_text, xy=(0.02, 0.97), xycoords='axes fraction', verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
     
-    # Add labels and title
-    plt.title(f'{symbol} - {strategy_name} - Max PnL% Quantile Plot')
+    # Set title and labels
+    plt.title(f'{symbol} - {strategy_name} - Max PnL% Distribution')
     plt.xlabel('Quantile')
     plt.ylabel('Max PnL%')
     plt.grid(True)
+    plt.legend()
     
-    # Add key quantile markers
-    plt.scatter([0.25, 0.5, 0.75, 0.95], [q1, median, q3, p95], color='red', s=50, zorder=5)
-    
-    plt.tight_layout()
-    plt.show()
+    # Return the figure instead of showing it
+    return fig
 
 def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None, cost_basis=None):
     """Plot simulation results including ticker symbol in titles."""
     if results is None:
-        return
+        return None
     
     price_paths = results['price_paths']
     strategy_values = results['strategy_values']
     time_steps = results['time_steps']
     
     # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    main_fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     
     # Calculate dates for x-axis
     start_date = datetime.now()
@@ -226,7 +253,8 @@ def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None,
             f"Return Ratio: {(max_value-initial_value)/(initial_value-min_value) if (initial_value-min_value) != 0 else float('inf'):.2f}"
         )
     
-    # Calculate max PnL% statistics if cost basis is provided
+    # Create the quantile plot figure if cost basis is provided
+    pnl_fig = None
     if cost_basis is not None and cost_basis > 0:
         # Calculate max PnL% for each path
         max_pnl_pct = calculate_max_pnl_percentage(strategy_values, initial_value, cost_basis)
@@ -238,8 +266,8 @@ def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None,
         # Add to stats text
         stats_text += f"\nAvg Max PnL%: {mean_max_pnl:.2f}%\n95th %tile Max PnL%: {p95_max_pnl:.2f}%"
         
-        # Plot max PnL% quantile plot
-        plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol)
+        # Create quantile plot but don't show it yet
+        pnl_fig = plot_max_pnl_quantiles(max_pnl_pct, strategy_name, symbol)
     
     ax2.annotate(stats_text, xy=(0.02, 0.95), xycoords='axes fraction', verticalalignment='top',
                  bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
@@ -254,8 +282,13 @@ def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None,
     ax2.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
     plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45)
     
-    plt.tight_layout()
+    main_fig.tight_layout()
+    
+    # Show all figures at once
     plt.show()
+    
+    # Return both figures for reference
+    return main_fig, pnl_fig
 
 def get_target_expiry_date() -> datetime:
     """Get a target expiry date that's at least a month away."""
@@ -388,11 +421,11 @@ def main():
             results = simulator.run_simulation(num_paths=num_paths, num_steps=num_steps)
             
             # Plot results with cost basis
-            plot_simulation_results(results, strategy_name, symbol, bid_ask_impact, cost_basis)
-            return results
+            fig = plot_simulation_results(results, strategy_name, symbol, bid_ask_impact, cost_basis)
+            return results, fig
         except Exception as e:
             print(f"Error simulating {strategy_name}: {str(e)}")
-            return None
+            return None, None
     
     # Get volatility and risk-free rate once for all simulations
     volatility = fetcher.get_historical_volatility(symbol)
@@ -426,7 +459,7 @@ def main():
             cost_basis = cost_basis_details['maximum_loss']
             
             # Simulate the strategy with Monte Carlo
-            results = simulate_strategy(
+            results, fig = simulate_strategy(
                 strategy_names[strategy_key],
                 positions, 
                 volatility=volatility,
