@@ -16,16 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Total bid-ask cost impact calculation for option strategies
 - Object-oriented cost basis calculation system with strategy-specific implementations
 - Maximum potential loss and breakeven point calculations for all option strategies
+- Max PnL% statistical analysis with exceedance probability plots
+- Quantitative visualization of maximum potential returns relative to cost basis
 
 ### Changed
 - Refactored cost basis calculation to use polymorphic design for better extensibility
 - Improved strategy composer interface to include cost basis calculation methods
 - Refactored option simulation example to use new modular components
 - Improved display of position information with clearer terminology
+- Enhanced visualization of simulation results with more intuitive plots
 
 ### Fixed
 - Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs
 - Fixed discrepancies in deep ITM option pricing by eliminating dependency on externally reported implied volatility values
+- Fixed matplotlib plotting issue with multiple figures display
 
 ## [0.1.3] - 2025-03-24
 ### Added
