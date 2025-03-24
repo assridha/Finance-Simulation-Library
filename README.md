@@ -2,14 +2,16 @@
 
 A comprehensive Python library for simulating and analyzing financial instruments, including stock prices, options, and portfolios.
 
-## Latest Updates (v0.1.2)
+## Latest Updates (v0.1.3)
 
 🚀 **Major Improvements**
-- **Enhanced Option Pricing**: Individual implied volatilities for each contract
-- **Accurate Strategy Values**: Proper handling of debits and credits
-- **Standard Trading Notation**: Debits positive, credits negative
-- **Command-Line Interface**: Run specific strategies via CLI
-- **Improved P&L Tracking**: Accurate calculations for long/short positions
+- **Modular Portfolio System**: New strategy composers and analyzers for flexible strategy creation
+- **Advanced Option Strategies**: Enhanced butterfly spread implementation using both calls and puts
+- **Customizable Simulations**: Command-line parameters for growth rate and volatility
+- **Scenario Analysis**: Volatility multiplier for stress-testing strategies
+- **Improved Position Display**: Clear BOUGHT/SOLD indicators for option positions
+- **Better Architecture**: Separated data fetching from strategy logic
+- **Strategy-Specific Selection**: Intelligent contract selection based on strategy requirements
 
 See the [CHANGELOG.md](CHANGELOG.md) for full details.
 
@@ -225,6 +227,9 @@ python -m financial_sim_library.examples.option_simulation_example [options]
 - `-s, --symbol SYMBOL`: Stock symbol to simulate (default: AAPL)
 - `-n, --num-paths NUM_PATHS`: Number of simulation paths (default: 1000)
 - `-st, --strategies STRATEGY [STRATEGY ...]`: Strategies to simulate
+- `-g, --growth-rate RATE`: Custom annual growth rate (decimal, e.g., 0.05 for 5%)
+- `-v, --volatility-override VOL`: Custom annual volatility (decimal, e.g., 0.25 for 25%)
+- `-vm, --volatility-multiplier MULT`: Multiplier to apply to historical volatility (e.g., 1.5)
 
 ##### Available Strategies
 
@@ -250,6 +255,16 @@ python -m financial_sim_library.examples.option_simulation_example -s TSLA -n 20
 Run just the simple call option strategy:
 ```bash
 python -m financial_sim_library.examples.option_simulation_example -st simple_call
+```
+
+Run butterfly strategy with custom volatility (40%) and growth rate (5%):
+```bash
+python -m financial_sim_library.examples.option_simulation_example -st butterfly -v 0.4 -g 0.05
+```
+
+Run covered call strategy with 1.5x historical volatility:
+```bash
+python -m financial_sim_library.examples.option_simulation_example -st covered_call -vm 1.5
 ```
 
 ### Command Line Usage

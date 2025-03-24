@@ -19,6 +19,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs
 - Fixed discrepancies in deep ITM option pricing by eliminating dependency on externally reported implied volatility values
 
+## [0.1.3] - 2025-03-24
+### Added
+- Modular portfolio system with strategy composers and analyzers
+- New butterfly spread strategy implementation (using both calls and puts)
+- Command-line arguments for customizing growth rate and volatility
+- Volatility multiplier parameter for scenario analysis
+- Enhanced output clarity for option positions (BOUGHT/SOLD indicators)
+- Separated data fetching from strategy logic for improved maintainability
+- Strategy-specific logic for selecting optimal contracts
+
+### Changed
+- Refactored option simulation example to use new modular components
+- Improved display of position information with clearer terminology
+
+### Fixed
+- Resolved issue with abstract `StrategyComposer` class instantiation
+- Fixed butterfly spread strategy to properly select strike prices
+- Improved error handling for cases where exact strike prices aren't available
+
 ## [0.1.2] - 2025-03-24
 ### Added
 - Command-line interface for option simulation examples
