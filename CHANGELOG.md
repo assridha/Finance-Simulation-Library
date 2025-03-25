@@ -1,70 +1,43 @@
 # Changelog
 
-## [Unreleased] - 2024-03-25
+## [v0.2.0] - 2024-03-25
 
 ### Added
-- Frontend caching for historical data to reduce API calls
-- Debounced simulation requests to prevent rapid API calls
+- Web interface with React frontend for stock price visualization
+- Flask backend with RESTful API endpoints
+- Real-time Monte Carlo simulation with interactive plots
+- Historical data visualization with candlestick charts
+- Frontend caching for historical data
+- Debounced simulation requests
 - Loading states and error handling in the frontend
-- Proper cleanup of debounced functions on component unmount
+- CORS support for web applications
+- Comprehensive API documentation
 
 ### Changed
-- Optimized `StockSimulator` component to reduce unnecessary re-renders
-- Improved API call efficiency by caching historical data
+- Optimized `StockSimulator` component for better performance
 - Enhanced error handling and user feedback
 - Updated plot styling with better visibility and contrast
-- Fixed CORS issues in Flask backend
+- Improved API response formats
+- Changed default backend port to 5001 to avoid AirPlay conflicts
+- Updated setup instructions for frontend and backend
+- Enhanced documentation with API details and troubleshooting guide
 
 ### Fixed
-- Fixed multiple simultaneous API calls issue
-- Resolved undefined property access errors in statistics display
-- Fixed port conflicts by using port 5001 for backend
-- Improved error handling for invalid stock symbols
-- Added proper TypeScript types for lodash dependencies
+- Multiple simultaneous API calls issue
+- Undefined property access errors in statistics display
+- Port conflicts with AirPlay on macOS
+- Error handling for invalid stock symbols
+- TypeScript type definitions for dependencies
 
 ### Technical Debt
 - Added proper useCallback dependencies
 - Improved code organization in StockSimulator component
 - Better state management for loading and error states
 - Memoized API base URL and callback functions
+- Added proper TypeScript types
 
-## [Unreleased]
+## [v0.1.3] - 2024-03-24
 
-### Added
-- Initial project structure
-- Basic documentation
-- Design specification
-- Version release plan
-- Bid-ask spread tracking for option contracts and simulation results
-- Total bid-ask cost impact calculation for option strategies
-- Object-oriented cost basis calculation system with strategy-specific implementations
-- Maximum potential loss and breakeven point calculations for all option strategies
-- Max PnL% statistical analysis with exceedance probability plots
-- Quantitative visualization of maximum potential returns relative to cost basis
-- Web-based interface specification for strategy configuration and result visualization
-- Interactive dashboard design for multiple plot management
-- Flask-based REST API implementation with endpoints for:
-  - Market data retrieval
-  - Option chain data access
-  - Monte Carlo market simulation
-- CORS support for web interface integration
-- Rate limiting implementation for API endpoints
-- Comprehensive API testing suite
-
-### Changed
-- Refactored cost basis calculation to use polymorphic design for better extensibility
-- Improved strategy composer interface to include cost basis calculation methods
-- Refactored option simulation example to use new modular components
-- Improved display of position information with clearer terminology
-- Enhanced visualization of simulation results with more intuitive plots
-- Extended project timeline to accommodate web interface development
-
-### Fixed
-- Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs
-- Fixed discrepancies in deep ITM option pricing by eliminating dependency on externally reported implied volatility values
-- Fixed matplotlib plotting issue with multiple figures display
-
-## [0.1.3] - 2025-03-24
 ### Added
 - Modular portfolio system with strategy composers and analyzers
 - New butterfly spread strategy implementation (using both calls and puts)
@@ -83,7 +56,8 @@
 - Fixed butterfly spread strategy to properly select strike prices
 - Improved error handling for cases where exact strike prices aren't available
 
-## [0.1.2] - 2025-03-24
+## [v0.1.2] - 2024-03-24
+
 ### Added
 - Command-line interface for option simulation examples
 - Support for selecting specific strategies to simulate
@@ -94,7 +68,8 @@
 - Fixed P&L calculation throughout simulation for long/short positions
 - Enhanced option pricing to use individual implied volatilities for each contract
 
-## [0.1.1] - 2025-03-23
+## [v0.1.1] - 2024-03-23
+
 ### Added
 - New caching mechanisms for option chain and market data
 - Added vectorized Black-Scholes calculations
@@ -112,7 +87,8 @@
 - Fixed inefficient calculation loops in option pricing
 - Reduced memory footprint during simulations
 
-## [0.1.0] - 2025-03-20
+## [v0.1.0] - 2024-03-20
+
 ### Added
 - Basic GBM model with growth models
 - Black-Scholes option pricing
@@ -136,31 +112,8 @@
 ### Security
 - None (initial release)
 
-## [0.2.0] - YYYY-MM-DD
-### Added
-- ARIMA and GARCH models
-- Monte Carlo option pricing
-- Basic portfolio management
-- Expanded utility functions
-- Improved visualizations
-- Increased test coverage
+## [0.3.0] - YYYY-MM-DD (Planned)
 
-### Changed
-- None (planned)
-
-### Deprecated
-- None (planned)
-
-### Removed
-- None (planned)
-
-### Fixed
-- None (planned)
-
-### Security
-- None (planned)
-
-## [0.3.0] - YYYY-MM-DD
 ### Added
 - TimGAN implementation
 - Advanced portfolio optimization
@@ -184,7 +137,8 @@
 ### Security
 - None (planned)
 
-## [1.0.0] - YYYY-MM-DD
+## [1.0.0] - YYYY-MM-DD (Planned)
+
 ### Added
 - Complete documentation
 - Comprehensive test coverage
