@@ -294,8 +294,8 @@ def plot_simulation_results(results, strategy_name, symbol, bid_ask_impact=None,
 def get_target_expiry_date() -> datetime:
     """Get a target expiry date that's at least a month away."""
     current_date = datetime.now()
-    target_date = current_date + timedelta(days=30)  # At least a month away
-    return target_date.replace(year=2025, month=5, day=6)  # Example target date
+    target_date = current_date + timedelta(days=40)  # At least a month away
+    return target_date.replace(year=2025, month=5, day=17)  # Example target date
 
 def get_available_strategies():
     """Returns a dictionary of available strategy names and their descriptions."""

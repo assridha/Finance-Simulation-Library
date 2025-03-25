@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maximum potential loss and breakeven point calculations for all option strategies
 - Max PnL% statistical analysis with exceedance probability plots
 - Quantitative visualization of maximum potential returns relative to cost basis
+- Web-based interface specification for strategy configuration and result visualization
+- Interactive dashboard design for multiple plot management
+- Flask-based REST API implementation with endpoints for:
+  - Market data retrieval
+  - Option chain data access
+  - Monte Carlo market simulation
+- CORS support for web interface integration
+- Rate limiting implementation for API endpoints
+- Comprehensive API testing suite
 
 ### Changed
 - Refactored cost basis calculation to use polymorphic design for better extensibility
@@ -25,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored option simulation example to use new modular components
 - Improved display of position information with clearer terminology
 - Enhanced visualization of simulation results with more intuitive plots
+- Extended project timeline to accommodate web interface development
 
 ### Fixed
 - Improved option pricing accuracy by calculating implied volatility from entry prices instead of using reported IVs

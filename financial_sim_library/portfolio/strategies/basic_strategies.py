@@ -176,14 +176,14 @@ class VerticalSpreadComposer(StrategyComposer):
             symbol,
             expiry_date,
             'call',
-            0.2  # OTM call delta
+            0.15  # OTM call delta
         )
         
         otm_call2 = fetcher.find_option_by_delta(
             symbol,
             expiry_date,
             'call',
-            0.1  # OTM call delta
+            0.3  # OTM call delta
         )
         
         # Define positions
