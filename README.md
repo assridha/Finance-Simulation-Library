@@ -383,3 +383,193 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - This library uses [yfinance](https://github.com/ranaroussi/yfinance) for fetching market data
 - Visualization is powered by [matplotlib](https://matplotlib.org/)
 - Code was generated using Cursor with Sonnet 3.7
+
+# Option Simulator v2
+
+## Recent Updates
+
+### Frontend Improvements
+- Added caching for historical data to improve performance
+- Implemented debounced API calls to prevent server overload
+- Enhanced error handling and user feedback
+- Improved plot styling and visibility
+- Added loading states for better user experience
+
+### Backend Changes
+- Fixed CORS issues in Flask backend
+- Improved error handling for invalid stock symbols
+- Using port 5001 by default to avoid conflicts with AirPlay
+
+## Setup Instructions
+
+### Backend Setup
+1. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Start the Flask server:
+   ```bash
+   python -m flask --app financial_sim_library.web_interface.app run --debug --port 5001
+   ```
+
+### Frontend Setup
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm start
+   ```
+   The app will run on http://localhost:3000
+
+## Known Issues and Solutions
+- If port 5000 is in use (common on macOS due to AirPlay), the backend will use port 5001
+- If you see TypeScript errors related to lodash, run:
+  ```bash
+  cd frontend && npm install --save-dev @types/lodash
+  ```
+- If the app seems slow, try reducing the number of simulations or increasing the debounce timeout
+
+## API Documentation
+
+The application provides several REST API endpoints for market data and simulations.
+
+### Market Data Endpoints
+
+#### Get Historical Data
+```http
+GET /api/market-data/historical
+```
+Fetches historical price data for a given stock symbol.
+
+**Query Parameters:**
+- `symbol` (required): Stock symbol (e.g., AAPL)
+- `period` (optional): Time period (default: '6mo', options: '1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', 'max')
+- `interval` (optional): Data interval (default: '1d', options: '1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo')
+
+**Response:**
+```json
+{
+    "timestamps": ["2024-03-24", "2024-03-25", ...],
+    "open": [100.0, 101.0, ...],
+    "high": [102.0, 103.0, ...],
+    "low": [99.0, 98.0, ...],
+    "close": [101.5, 102.5, ...],
+    "volume": [1000000, 1100000, ...],
+    "symbol": "AAPL",
+    "period": "6mo",
+    "interval": "1d",
+    "timestamp": "2024-03-25T12:00:00"
+}
+```
+
+#### Get Current Market Data
+```http
+GET /api/market-data?symbol=AAPL
+```
+Fetches current market data including price, change, and volatility.
+
+**Query Parameters:**
+- `symbol` (required): Stock symbol (e.g., AAPL)
+
+**Response:**
+```json
+{
+    "symbol": "AAPL",
+    "price": 175.50,
+    "change": 2.50,
+    "change_percent": 1.45,
+    "volume": 55000000,
+    "volatility": 25.5,
+    "timestamp": "2024-03-25T12:00:00"
+}
+```
+
+### Simulation Endpoints
+
+#### Run Market Simulation
+```http
+POST /api/market/simulate
+```
+Runs a Monte Carlo simulation for future stock prices.
+
+**Request Body:**
+```json
+{
+    "symbol": "AAPL",
+    "days_to_simulate": 30,
+    "num_simulations": 5
+}
+```
+
+**Parameters:**
+- `symbol` (required): Stock symbol to simulate
+- `days_to_simulate` (optional): Number of days to simulate (default: 30, max: 365)
+- `num_simulations` (optional): Number of simulation paths (default: 5, max: 1000)
+
+**Response:**
+```json
+{
+    "symbol": "AAPL",
+    "current_price": 175.50,
+    "simulated_paths": [
+        [175.50, 176.20, 177.10, ...],
+        [175.50, 174.80, 173.90, ...],
+        ...
+    ],
+    "statistics": {
+        "mean": 180.25,
+        "std": 5.32,
+        "min": 170.15,
+        "max": 190.35,
+        "expected_return": 0.0271,
+        "prob_above_current": 0.56,
+        "volatility": 25.5
+    },
+    "timestamps": ["2024-03-25", "2024-03-26", ...],
+    "timestamp": "2024-03-25T12:00:00"
+}
+```
+
+### Error Responses
+
+All endpoints return standard HTTP status codes:
+
+- `200 OK`: Request successful
+- `400 Bad Request`: Invalid parameters
+- `404 Not Found`: Symbol not found
+- `429 Too Many Requests`: Rate limit exceeded
+- `500 Internal Server Error`: Server error
+
+Error Response Format:
+```json
+{
+    "error": "Error message describing what went wrong",
+    "status_code": 400
+}
+```
+
+### Rate Limiting
+
+- Market data endpoints: 30 requests per minute
+- Simulation endpoints: 10 requests per minute
+
+### CORS Support
+
+The API supports CORS for web applications running on:
+- `http://localhost:3000` (Development)
+- Other authorized domains (Production)

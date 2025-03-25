@@ -1,9 +1,32 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [Unreleased] - 2024-03-25
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Added
+- Frontend caching for historical data to reduce API calls
+- Debounced simulation requests to prevent rapid API calls
+- Loading states and error handling in the frontend
+- Proper cleanup of debounced functions on component unmount
+
+### Changed
+- Optimized `StockSimulator` component to reduce unnecessary re-renders
+- Improved API call efficiency by caching historical data
+- Enhanced error handling and user feedback
+- Updated plot styling with better visibility and contrast
+- Fixed CORS issues in Flask backend
+
+### Fixed
+- Fixed multiple simultaneous API calls issue
+- Resolved undefined property access errors in statistics display
+- Fixed port conflicts by using port 5001 for backend
+- Improved error handling for invalid stock symbols
+- Added proper TypeScript types for lodash dependencies
+
+### Technical Debt
+- Added proper useCallback dependencies
+- Improved code organization in StockSimulator component
+- Better state management for loading and error states
+- Memoized API base URL and callback functions
 
 ## [Unreleased]
 

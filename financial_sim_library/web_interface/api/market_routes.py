@@ -25,7 +25,7 @@ def get_market_data():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-@market_bp.route('/historical-data', methods=['GET'])
+@market_bp.route('/market-data/historical', methods=['GET'])
 @limiter.limit()
 @cache.cached(timeout=300, query_string=True)  # Cache for 5 minutes
 def get_historical_data():
@@ -50,7 +50,7 @@ def get_historical_data():
             return jsonify({'error': str(e)}), 404
         return jsonify({'error': str(e)}), 400
 
-@market_bp.route('/simulate', methods=['POST'])
+@market_bp.route('/market/simulate', methods=['POST'])  # Changed from /simulate to /market/simulate
 @limiter.limit()
 def run_simulation():
     """Run a Monte Carlo price simulation."""

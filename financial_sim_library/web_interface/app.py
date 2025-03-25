@@ -31,7 +31,7 @@ def create_app(config=None):
     
     # Register blueprints
     app.register_blueprint(api_bp, url_prefix='/api')
-    app.register_blueprint(market_bp, url_prefix='/api/market')
+    app.register_blueprint(market_bp, url_prefix='/api')
     app.register_blueprint(option_bp, url_prefix='/api')
     
     return app 

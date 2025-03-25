@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 import yfinance as yf
 import numpy as np
 from datetime import datetime, timedelta
+from ...stock_simulator.models.gbm import GBMModel
 
 class MarketService:
     """Service for handling market data and price simulations."""
@@ -84,10 +85,16 @@ class MarketService:
         ticker = self._validate_symbol(symbol)
         
         try:
-            data = ticker.history(period=period, interval=interval)
+            # Fetch slightly more data to ensure we have enough after filtering
+            fetch_period = '70d' if period == '2mo' else period
+            data = ticker.history(period=fetch_period, interval=interval)
             
             if data.empty:
                 raise ValueError(f"No historical data found for symbol: {symbol}")
+            
+            # If period is 2mo, filter to exactly last 60 days
+            if period == '2mo':
+                data = data.last('60D')
             
             return {
                 'timestamps': data.index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
@@ -105,7 +112,7 @@ class MarketService:
             raise ValueError(f"Error fetching historical data for {symbol}: {str(e)}")
     
     def run_price_simulation(self, symbol, days_to_simulate=252, num_simulations=1000):
-        """Run a Monte Carlo price simulation.
+        """Run a Monte Carlo price simulation using the GBMModel.
         
         Args:
             symbol (str): Stock symbol to simulate.
@@ -118,50 +125,33 @@ class MarketService:
         Raises:
             ValueError: If the symbol is invalid or simulation fails.
         """
-        ticker = self._validate_symbol(symbol)
-        
         try:
-            # Get historical data for parameter estimation
-            data = ticker.history(period='1y')
-            if data.empty:
-                raise ValueError(f"No data available for symbol: {symbol}")
+            # Create and calibrate the GBM model
+            model = GBMModel(
+                ticker=symbol,
+                days_to_simulate=days_to_simulate,
+                num_simulations=num_simulations
+            )
             
-            # Extract closing prices
-            prices = np.array(data['Close'])
-            returns = np.log(prices[1:] / prices[:-1])
+            # Run simulation
+            results = model.simulate()
             
-            # Calculate parameters
-            mu = np.mean(returns)
-            sigma = np.std(returns)
-            S0 = prices[-1]
-            dt = 1/252  # Daily time step
-            
-            # Run simulations
-            paths = np.zeros((days_to_simulate + 1, num_simulations))  # +1 to include initial day
-            paths[0] = S0
-            
-            for t in range(1, days_to_simulate + 1):  # +1 to include initial day
-                z = np.random.standard_normal(num_simulations)
-                paths[t] = paths[t-1] * np.exp((mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * z)
-            
-            # Calculate statistics
-            final_prices = paths[-1]
-            mean_price = np.mean(final_prices)
-            
+            # Format results to match the expected API response
             return {
                 'symbol': symbol,
-                'current_price': float(S0),
-                'simulated_paths': paths.T.tolist(),  # Transpose to get paths as rows
+                'current_price': float(results['current_price']),
+                'simulated_paths': results['price_paths'].tolist(),
                 'statistics': {
-                    'mean': float(mean_price),
-                    'std': float(np.std(final_prices)),
-                    'min': float(np.min(final_prices)),
-                    'max': float(np.max(final_prices)),
-                    'expected_return': float((mean_price - S0) / S0),
-                    'prob_above_current': float(np.mean(final_prices > S0))
+                    'mean': float(results['statistics']['mean']),
+                    'std': float(results['statistics']['std']),
+                    'min': float(results['statistics']['min']),
+                    'max': float(results['statistics']['max']),
+                    'expected_return': float(results['statistics']['expected_return'] / 100),  # Convert from percentage
+                    'prob_above_current': float(results['statistics']['prob_above_current'] / 100),  # Convert from percentage
+                    'volatility': float(results['parameters']['volatility'] * 100)  # Convert to percentage
                 },
                 'timestamps': [(datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d')
-                             for i in range(days_to_simulate + 1)],  # +1 to include initial day
+                             for i in range(days_to_simulate + 1)],
                 'timestamp': datetime.now().isoformat()
             }
         except Exception as e:
